@@ -181,6 +181,7 @@ export default class FeatureServerBasemap extends BasemapProtocol {
             };
 
             const tileIndex = new GeoJSONVT(geojson, {
+                indexMaxZoom: 24,
                 maxZoom: 24,
                 tolerance: 3,
                 extent: 4096,
