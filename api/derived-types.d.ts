@@ -2245,8 +2245,12 @@ export interface paths {
                             "agol::client_id"?: string;
                             /** @description AGOL OAuth2 Client Secret */
                             "agol::client_secret"?: string;
-                            /** @description Base URL for Media Service */
+                            /** @description Legacy base URL for Media Service */
                             "media::url"?: string;
+                            /** @description Internal base URL for Media Service API calls */
+                            "media::internal_url"?: string;
+                            /** @description Public base URL for Media Service playback and metadata */
+                            "media::public_url"?: string;
                             "media::proxy::allow"?: string[];
                             /** @description COTURN Server URL */
                             "coturn::url"?: string;
@@ -2485,8 +2489,12 @@ export interface paths {
                         "agol::client_id"?: string;
                         /** @description AGOL OAuth2 Client Secret */
                         "agol::client_secret"?: string;
-                        /** @description Base URL for Media Service */
+                        /** @description Legacy base URL for Media Service */
                         "media::url"?: string;
+                        /** @description Internal base URL for Media Service API calls */
+                        "media::internal_url"?: string;
+                        /** @description Public base URL for Media Service playback and metadata */
+                        "media::public_url"?: string;
                         "media::proxy::allow"?: string[];
                         /** @description COTURN Server URL */
                         "coturn::url"?: string;
@@ -2660,8 +2668,12 @@ export interface paths {
                             "agol::client_id"?: string;
                             /** @description AGOL OAuth2 Client Secret */
                             "agol::client_secret"?: string;
-                            /** @description Base URL for Media Service */
+                            /** @description Legacy base URL for Media Service */
                             "media::url"?: string;
+                            /** @description Internal base URL for Media Service API calls */
+                            "media::internal_url"?: string;
+                            /** @description Public base URL for Media Service playback and metadata */
+                            "media::public_url"?: string;
                             "media::proxy::allow"?: string[];
                             /** @description COTURN Server URL */
                             "coturn::url"?: string;
