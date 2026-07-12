@@ -40,7 +40,7 @@ export default async function router(schema: Schema, config: Config) {
             await Auth.as_user(config, req, { admin: true });
 
             res.json({
-                path: await videoControl.path(req.params.path),
+                path: await videoControl.path(decodeURIComponent(req.params.path)),
             });
         } catch (err) {
             Err.respond(err, res);

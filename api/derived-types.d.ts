@@ -2165,6 +2165,10 @@ export interface paths {
                             "agol::client_secret"?: string;
                             /** @description Base URL for Media Service */
                             "media::url"?: string;
+                        "media::internal_url"?: string;
+                        "media::public_url"?: string;
+                            "media::internal_url"?: string;
+                            "media::public_url"?: string;
                             /** @description COTURN Server URL */
                             "coturn::url"?: string;
                             /** @description COTURN Server Secret */
@@ -2385,6 +2389,8 @@ export interface paths {
                         "agol::client_secret"?: string;
                         /** @description Base URL for Media Service */
                         "media::url"?: string;
+                        "media::internal_url"?: string;
+                        "media::public_url"?: string;
                         /** @description COTURN Server URL */
                         "coturn::url"?: string;
                         /** @description COTURN Server Secret */
@@ -2540,6 +2546,10 @@ export interface paths {
                             "agol::client_secret"?: string;
                             /** @description Base URL for Media Service */
                             "media::url"?: string;
+                        "media::internal_url"?: string;
+                        "media::public_url"?: string;
+                            "media::internal_url"?: string;
+                            "media::public_url"?: string;
                             /** @description COTURN Server URL */
                             "coturn::url"?: string;
                             /** @description COTURN Server Secret */

@@ -43,10 +43,22 @@
                 <div class='row'>
                     <div class='col-lg-12'>
                         <TablerInput
-                            v-model='config["media::url"]'
+                            v-model='config["media::internal_url"]'
                             :disabled='!edit'
-                            :error='validateURL(config["media::url"])'
-                            label='CloudTAK Hosted MediaMTX Service URL'
+                            :error='validateOptionalURL(config["media::internal_url"])'
+                            label='Internal Media URL'
+                            description='Used by CloudTAK for service-to-service media API calls.'
+                            placeholder='http://mediamtx:9997'
+                        />
+                    </div>
+                    <div class='col-lg-12 mt-3'>
+                        <TablerInput
+                            v-model='config["media::public_url"]'
+                            :disabled='!edit'
+                            :error='validateOptionalURL(config["media::public_url"])'
+                            label='Public Media URL'
+                            description='Used for browser-facing playback URLs and lease metadata.'
+                            placeholder='https://video.ksutak.org'
                         />
                     </div>
                 </div>
@@ -74,6 +86,8 @@ import {
 
 interface MediaConfig {
     'media::url': string;
+    'media::internal_url': string;
+    'media::public_url': string;
 }
 
 const isOpen = ref<boolean>(false);
@@ -83,6 +97,8 @@ const err = ref<Error | null>(null);
 
 const config = ref<MediaConfig>({
     'media::url': '',
+    'media::internal_url': '',
+    'media::public_url': '',
 });
 
 onMounted(() => {
@@ -92,6 +108,11 @@ onMounted(() => {
 watch(isOpen, (newState) => {
     if (newState && !edit.value) void fetch();
 });
+
+function validateOptionalURL(value: string): string {
+    if (!value.trim()) return '';
+    return validateURL(value);
+}
 
 async function fetch(): Promise<void> {
     loading.value = true;
@@ -105,8 +126,13 @@ async function fetch(): Promise<void> {
             }
         });
         if (error) throw new Error(error.message);
+        const legacy = data['media::url'] ?? '';
+        const internal = data['media::internal_url'] ?? legacy;
+        const publicUrl = data['media::public_url'] ?? legacy ?? internal;
         config.value = {
-            'media::url': data['media::url'] ?? '',
+            'media::url': legacy,
+            'media::internal_url': internal,
+            'media::public_url': publicUrl,
         };
     } catch (error) {
         err.value = error instanceof Error ? error : new Error(String(error));
@@ -119,10 +145,14 @@ async function save(): Promise<void> {
     err.value = null;
     try {
         const { error } = await server.PUT('/api/config', {
-            body: config.value
+            body: {
+                'media::internal_url': config.value['media::internal_url'].trim(),
+                'media::public_url': config.value['media::public_url'].trim(),
+            }
         });
         if (error) throw new Error(error.message);
         edit.value = false;
+        await fetch();
     } catch (error) {
         err.value = error instanceof Error ? error : new Error(String(error));
         console.error('Failed to save Media config:', error);
