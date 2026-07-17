@@ -364,7 +364,6 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                         console.error('Failed to save COT: ', err);
                     }
 
-                    console.log(`[REPLAY-DEBUG] wsClients key=${String(conn.id)} clientCount=${(this.config.wsClients.get(String(conn.id)) || []).length}`);
                     for (const client of (this.config.wsClients.get(String(conn.id)) || [])) {
                         if (client.format == 'geojson') {
                             if (feat.properties && feat.properties.chat && feat.properties.chat.parent === 'DataSyncMissionsList') {
