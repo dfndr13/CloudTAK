@@ -172,6 +172,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { std } from '../../src/std.ts';
 import FeatureManager from '../../src/base/feature.ts';
 import { FeatureVisibility } from '../../src/stores/modules/feature-visibility.ts';
+import ProfileConfig from '../../src/base/profile.ts';
 
 type Category = 'aircraft' | 'uas' | 'ground' | 'maritime' | 'other';
 const categories: Category[] = ['aircraft', 'uas', 'ground', 'maritime', 'other'];
@@ -188,6 +189,14 @@ const events = ref<ReplayEvent[]>([]);
 const selectedEventId = ref<number | null>(null);
 const activeEventName = ref('');
 let hiddenLiveIds: string[] = [];
+// The user's own live self-position marker shares its CoT UID with any
+// replayed copy of "themselves" in the recording. Its live updates go
+// straight to the TAK server (PUT /profile/location -> tak.write), bypassing
+// ConnectionPool.cots()'s replay tagging entirely, then echo back tagged
+// replay:false - a continuous geolocation watch keeps re-submitting it, so
+// it repeatedly wins the race against the replay tag. Simplest fix: never
+// let the replay-visibility mechanism touch this UID at all.
+let selfUid: string | null = null;
 const newEventName = ref('');
 const recording = reactive<{ active: boolean; event?: { id: number; name: string } }>({ active: false });
 
@@ -250,9 +259,15 @@ async function stopRecording() {
     await refreshEvents();
 }
 
+async function resolveSelfUid(): Promise<string | null> {
+    const username = await ProfileConfig.get('username');
+    return username?.value ? `ANDROID-CloudTAK-${username.value}` : null;
+}
+
 async function hideLiveFeatures() {
+    selfUid = await resolveSelfUid();
     const live = await FeatureManager.list();
-    hiddenLiveIds = live.map((f) => f.id);
+    hiddenLiveIds = live.map((f) => f.id).filter((id) => id !== selfUid);
     if (hiddenLiveIds.length) FeatureVisibility.setFeaturesHidden(hiddenLiveIds, true);
 }
 
@@ -274,7 +289,7 @@ async function hideNewLiveFeatures() {
     const replaySet = new Set(replayIds);
     const newIds = live
         .map((f) => f.id)
-        .filter((id) => !hiddenLiveIds.includes(id) && !replaySet.has(id));
+        .filter((id) => id !== selfUid && !hiddenLiveIds.includes(id) && !replaySet.has(id));
     if (newIds.length) {
         FeatureVisibility.setFeaturesHidden(newIds, true);
         hiddenLiveIds.push(...newIds);
