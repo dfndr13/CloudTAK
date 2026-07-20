@@ -77,6 +77,13 @@
                         @change='importEvent'
                     >
                 </label>
+                <button
+                    class='btn btn-sm btn-outline-danger flex-fill'
+                    :disabled='!selectedEventId'
+                    @click='deleteEvent'
+                >
+                    Delete
+                </button>
             </div>
         </div>
 
@@ -197,6 +204,20 @@ let hiddenLiveIds: string[] = [];
 // it repeatedly wins the race against the replay tag. Simplest fix: never
 // let the replay-visibility mechanism touch this UID at all.
 let selfUid: string | null = null;
+
+// UIDs confirmed delivered by the *current* playback session. Rebuilt from
+// scratch every time a session starts - membership in properties.replay
+// alone isn't trustworthy, since that's a persisted per-feature flag that
+// survives unchanged on any UID a *previous*, unrelated session touched but
+// this one never revisits.
+let sessionReplayUids: Set<string> = new Set();
+// Baseline of each UID's CoT generation time (properties.time), snapshotted
+// at session start and advanced as genuine new arrivals are detected. Used
+// to tell "still carrying a stale replay:true flag from a prior session"
+// apart from "just got a fresh replay message in this session" - the flag
+// alone can't do that, but the CoT's own timestamp only changes when a new
+// message actually arrives for that UID.
+let lastSeenTime: Map<string, string> = new Map();
 const newEventName = ref('');
 const recording = reactive<{ active: boolean; event?: { id: number; name: string } }>({ active: false });
 
@@ -233,7 +254,14 @@ onMounted(async () => {
 
 onUnmounted(() => {
     if (pollHandle) clearInterval(pollHandle);
-    if (session.value) restoreLiveFeatures();
+    if (session.value) {
+        // Null this out (not just clearInterval) so a poll tick that's
+        // already mid-flight - past pollStatus(), about to call
+        // hideNewLiveFeatures() - bails at the session.value guard below
+        // instead of re-hiding everything restoreLiveFeatures() just undid.
+        session.value = null;
+        restoreLiveFeatures();
+    }
 });
 
 async function refreshEvents() {
@@ -269,27 +297,40 @@ async function hideLiveFeatures() {
     const live = await FeatureManager.list();
     hiddenLiveIds = live.map((f) => f.id).filter((id) => id !== selfUid);
     if (hiddenLiveIds.length) FeatureVisibility.setFeaturesHidden(hiddenLiveIds, true);
+
+    // Fresh session: no UID is exempt yet, and every feature's current
+    // properties.time becomes the baseline that new arrivals must beat.
+    sessionReplayUids = new Set();
+    lastSeenTime = new Map(live.map((f) => [f.id, String(f.properties.time || '')]));
 }
 
 async function hideNewLiveFeatures() {
     const live = await FeatureManager.list();
-    const replayIds = live
-        .filter((f) => f.properties.replay === true)
-        .map((f) => f.id);
+
+    // A feature only belongs to this session once its CoT generation time
+    // has actually moved past the baseline - that's proof a new message
+    // landed while we were watching, not just a leftover replay:true flag.
+    for (const f of live) {
+        if (f.properties.replay !== true) continue;
+        const time = String(f.properties.time || '');
+        if (lastSeenTime.get(f.id) === time) continue;
+        lastSeenTime.set(f.id, time);
+        sessionReplayUids.add(f.id);
+    }
 
     // Replay-origin features must never be hidden - even if their UID was
     // already hidden as "live" (e.g. hidden at playback start, then updated
-    // by the replay itself), unhide it as soon as we see the replay tag.
-    const toUnhide = replayIds.filter((id) => hiddenLiveIds.includes(id));
+    // by the replay itself), unhide it as soon as we confirm it belongs to
+    // this session.
+    const toUnhide = [...sessionReplayUids].filter((id) => hiddenLiveIds.includes(id));
     if (toUnhide.length) {
         FeatureVisibility.setFeaturesHidden(toUnhide, false);
         hiddenLiveIds = hiddenLiveIds.filter((id) => !toUnhide.includes(id));
     }
 
-    const replaySet = new Set(replayIds);
     const newIds = live
         .map((f) => f.id)
-        .filter((id) => id !== selfUid && !hiddenLiveIds.includes(id) && !replaySet.has(id));
+        .filter((id) => id !== selfUid && !hiddenLiveIds.includes(id) && !sessionReplayUids.has(id));
     if (newIds.length) {
         FeatureVisibility.setFeaturesHidden(newIds, true);
         hiddenLiveIds.push(...newIds);
@@ -299,6 +340,8 @@ async function hideNewLiveFeatures() {
 function restoreLiveFeatures() {
     if (hiddenLiveIds.length) FeatureVisibility.setFeaturesHidden(hiddenLiveIds, false);
     hiddenLiveIds = [];
+    sessionReplayUids = new Set();
+    lastSeenTime = new Map();
 }
 
 async function startPlayback() {
@@ -319,6 +362,11 @@ async function startPlayback() {
     if (pollHandle) clearInterval(pollHandle);
     pollHandle = setInterval(async () => {
         await pollStatus();
+        // pollStatus() may have just ended the session (natural finish) and
+        // called restoreLiveFeatures(), which resets sessionReplayUids to
+        // empty. Calling hideNewLiveFeatures() right after would see no
+        // exemptions and immediately re-hide everything it just restored.
+        if (!session.value) return;
         await hideNewLiveFeatures();
     }, 1000);
 }
@@ -379,6 +427,17 @@ async function exportEvent() {
     a.download = `replay-export-${selectedEventId.value}.json`;
     a.click();
     URL.revokeObjectURL(url);
+}
+
+async function deleteEvent() {
+    if (!selectedEventId.value) return;
+    const evt = events.value.find((e) => e.id === selectedEventId.value);
+    const name = evt ? evt.name : `event ${selectedEventId.value}`;
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+
+    await std(`/api/replay/event/${selectedEventId.value}`, { method: 'DELETE' });
+    selectedEventId.value = null;
+    await refreshEvents();
 }
 
 async function importEvent(evt: Event) {
