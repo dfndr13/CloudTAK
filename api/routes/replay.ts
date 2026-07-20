@@ -350,6 +350,28 @@ export default async function router(schema: Schema, config: Config) {
         }
     });
 
+    await schema.delete('/replay/event/:eventid', {
+        name: 'Delete Event',
+        group: 'Replay',
+        description: 'Delete a recorded event and its associated CoT rows',
+        params: Type.Object({ eventid: Type.Integer() }),
+        res: Type.Any(),
+    }, async (req, res) => {
+        try {
+            await Auth.as_user(config, req);
+
+            const rows = await config.pg.execute(sql`
+                DELETE FROM replay_events WHERE id = ${req.params.eventid}
+                RETURNING id
+            `) as unknown as { id: number }[];
+            if (!rows.length) throw new Err(404, null, 'Event not found');
+
+            res.json({ deleted: true });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
     await schema.post('/replay/import', {
         name: 'Import Event',
         group: 'Replay',
