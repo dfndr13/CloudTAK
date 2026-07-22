@@ -117,7 +117,7 @@ export default class LocalHub implements HubClient {
         }
 
         if (req.broadcast) {
-            this.config.conns.cots(client.config, req.cots).catch((err) => {
+            this.config.conns.cots(client.config, req.cots, { replay: req.replay === true }).catch((err) => {
                 console.error(`Error: Failed to broadcast CoTs for ${req.connection}:`, err);
             });
         }
