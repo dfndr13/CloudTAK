@@ -52,6 +52,10 @@ export type SubmitCotsRequest = {
     broadcast?: boolean;
     ensureProfile?: boolean;
     ifPooled?: boolean;
+    // Tags every emitted feature's properties.replay - set explicitly (see
+    // ConnectionPool.cots()) so a stale replay:true from an earlier playback
+    // never survives on a CoT UID that's now genuinely live.
+    replay?: boolean;
 };
 
 export interface HubClient {
