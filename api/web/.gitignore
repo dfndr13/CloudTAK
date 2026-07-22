@@ -1,3 +1,4 @@
 dist/
 dev-dist/
-plugins/
+plugins/*
+!plugins/replay/

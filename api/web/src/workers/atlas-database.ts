@@ -45,6 +45,13 @@ export default class AtlasDatabase {
     // Stores Active Mission if present
     mission?: string;
 
+    // Whether a Replay recording is currently active. This worker runs in
+    // its own Web Worker realm, so it can't just read the Vue reactive
+    // singleton the recording banner (ReplayPanel.vue) uses - that object
+    // is re-instantiated per-realm and main-thread mutations never cross
+    // the boundary. Same push-from-main-thread pattern as makeActiveMission().
+    recordingActive = false;
+
     static normalizePath(path: string): string {
         if (!path) return '/';
         if (!path.startsWith('/')) path = '/' + path;
@@ -88,6 +95,10 @@ export default class AtlasDatabase {
         }
     }
 
+    async setRecordingActive(active: boolean): Promise<void> {
+        this.recordingActive = active;
+    }
+
     /**
      * Only Called by non-Mission CoTs, caller is responsible for creating Filters
      */
@@ -108,6 +119,29 @@ export default class AtlasDatabase {
         this.hydrating = this.hydrate().catch((err) => {
             console.error('Failed to hydrate features from local database:', err);
         });
+
+        try {
+            await this.loadArchive();
+        } catch (err) {
+            console.error('Failed to load archived features:', err);
+        }
+
+        // recordingActive is normally kept in sync by ReplayPanel.vue pushing
+        // status via setRecordingActive() on mount/start/stop. But this worker
+        // is a fresh instance on every page load/reload, and a reload doesn't
+        // guarantee ReplayPanel is the active route - without this, a reload
+        // that lands somewhere else leaves recordingActive stuck at its false
+        // default (missing any authored create/delete happening in that
+        // window) until/unless the user later visits the Replay panel. Check
+        // once at boot so a mid-recording reload doesn't blind the capture.
+        try {
+            const status = await std('/api/replay/record/status', {
+                token: this.atlas.token
+            }) as { active: boolean };
+            this.recordingActive = status.active;
+        } catch (err) {
+            console.error('Failed to fetch initial recording status:', err);
+        }
 
         await this.breadcrumb.load();
     }
@@ -529,6 +563,21 @@ export default class AtlasDatabase {
             this.pendingDelete.add(id);
 
             if (cot.properties.archived) {
+                this.atlas.postMessage({
+                    type: WorkerMessageType.Feature_Archived_Removed
+                });
+
+                // Same archived/CONNECTION signal as the direct-write capture
+                // in add() - this is one of the user's own drawn/authored
+                // features. Record the removal regardless of skipNetwork:
+                // that flag only means "don't redundantly call the
+                // individual profile-feature DELETE" (e.g. a bulk path
+                // delete already did it server-side), not "this wasn't a
+                // real user action".
+                if (this.recordingActive) {
+                    void this.recordRemoval(id);
+                }
+
                 if (!opts.skipNetwork) {
                     await std(`/api/profile/feature/${id}`, {
                         token: this.atlas.token,
@@ -886,6 +935,16 @@ export default class AtlasDatabase {
 
             await this.breadcrumb.update(exists);
 
+            // Reaching this branch with opts.authored means the feature has
+            // no active Mission to Share into (an authored CoT with an
+            // active Mission takes the Mission branch above instead) - i.e.
+            // exactly the drawn-but-unshared case that never reaches
+            // ConnectionPool.cots()/Recorder.record(). Direct-write it into
+            // the active recording, if any, so it isn't invisible to replay.
+            if (opts.authored && this.recordingActive) {
+                void this.recordDirectWrite(exists);
+            }
+
             return exists;
         }
     }
@@ -907,6 +966,45 @@ export default class AtlasDatabase {
     ): Promise<void> {
         for (const feature of features) {
             await this.add(feature, opts);
+        }
+    }
+
+    /**
+     * Direct-write a drawn/authored feature's current state into the active
+     * recording, bypassing TAK Server and connection-pool.ts entirely. Fire
+     * and forget - a failure here shouldn't block the local save.
+     */
+    private async recordDirectWrite(cot: COT): Promise<void> {
+        try {
+            await std('/api/replay/record/feature', {
+                token: this.atlas.token,
+                method: 'POST',
+                body: {
+                    id: cot.id,
+                    type: 'Feature',
+                    properties: cot.properties,
+                    geometry: cot.geometry
+                }
+            });
+        } catch (err) {
+            console.error('Failed to record drawn feature to active recording:', err);
+        }
+    }
+
+    /**
+     * Write a "removed at time X" marker for a drawn/authored feature into
+     * the active recording, so playback shows it disappearing instead of
+     * leaving its last known state on the map forever. Fire and forget -
+     * a failure here shouldn't block the local delete.
+     */
+    private async recordRemoval(id: string): Promise<void> {
+        try {
+            await std(`/api/replay/record/feature/${id}`, {
+                token: this.atlas.token,
+                method: 'DELETE'
+            });
+        } catch (err) {
+            console.error('Failed to record feature removal to active recording:', err);
         }
     }
 

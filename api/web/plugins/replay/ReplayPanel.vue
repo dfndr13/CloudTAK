@@ -180,6 +180,14 @@ import { std } from '../../src/std.ts';
 import FeatureManager from '../../src/base/feature.ts';
 import { FeatureVisibility } from '../../src/stores/modules/feature-visibility.ts';
 import ProfileConfig from '../../src/base/profile.ts';
+import { useMapStore } from '../../src/stores/map.ts';
+import { replayPlaybackState, recordingState } from './replay-state.ts';
+import ReplayBanner from './ReplayBanner.vue';
+import RecordingBanner from './RecordingBanner.vue';
+
+const mapStore = useMapStore();
+const BANNER_KEY = 'replay-playback-banner';
+const RECORDING_BANNER_KEY = 'replay-recording-banner';
 
 type Category = 'aircraft' | 'uas' | 'ground' | 'maritime' | 'other';
 const categories: Category[] = ['aircraft', 'uas', 'ground', 'maritime', 'other'];
@@ -239,6 +247,7 @@ async function pollStatus() {
         session.value = null;
         if (pollHandle) clearInterval(pollHandle);
         restoreLiveFeatures();
+        hideReplayBanner();
         progressLabel.value = 'Playback finished';
         return;
     }
@@ -261,6 +270,7 @@ onUnmounted(() => {
         // instead of re-hiding everything restoreLiveFeatures() just undid.
         session.value = null;
         restoreLiveFeatures();
+        hideReplayBanner();
     }
 });
 
@@ -273,6 +283,7 @@ async function refreshRecordingStatus() {
     const body = await std('/api/replay/record/status') as { active: boolean; event?: { id: number; name: string } };
     recording.active = body.active;
     recording.event = body.event;
+    syncRecordingBanner();
 }
 
 async function startRecording() {
@@ -344,12 +355,67 @@ function restoreLiveFeatures() {
     lastSeenTime = new Map();
 }
 
+function showReplayBanner(name: string) {
+    replayPlaybackState.active = true;
+    replayPlaybackState.eventName = name;
+    try {
+        mapStore.bottomBar.addItem({ key: BANNER_KEY, component: ReplayBanner });
+    } catch (err) {
+        console.warn('Failed to add replay banner, map not loaded?', err);
+    }
+}
+
+function hideReplayBanner() {
+    replayPlaybackState.active = false;
+    try {
+        mapStore.bottomBar.removeItem(BANNER_KEY);
+    } catch {
+        // Ignore error if bottomBar is not loaded
+    }
+}
+
+// Recording runs server-side regardless of whether this panel is mounted,
+// so - unlike the playback banner - this is only ever synced from
+// refreshRecordingStatus(), never added/removed from onUnmounted().
+function syncRecordingBanner() {
+    if (recording.active && recording.event) {
+        recordingState.active = true;
+        recordingState.eventName = recording.event.name;
+        try {
+            mapStore.bottomBar.addItem({ key: RECORDING_BANNER_KEY, component: RecordingBanner });
+        } catch (err) {
+            console.warn('Failed to add recording banner, map not loaded?', err);
+        }
+    } else {
+        recordingState.active = false;
+        try {
+            mapStore.bottomBar.removeItem(RECORDING_BANNER_KEY);
+        } catch {
+            // Ignore error if bottomBar is not loaded
+        }
+    }
+
+    // The Atlas worker runs in its own Web Worker realm and can't read the
+    // recordingState singleton above directly (it's re-instantiated
+    // per-realm), so push the flag across explicitly - this is what
+    // AtlasDatabase.add() actually checks before direct-writing a drawn
+    // feature into the active recording. Comlink calls are async, so a
+    // sync try/catch wouldn't see a rejection - use .catch() instead.
+    try {
+        mapStore.worker.db.setRecordingActive(recording.active)
+            .catch((err: unknown) => console.warn('Failed to sync recording state to worker', err));
+    } catch (err) {
+        console.warn('Failed to sync recording state to worker, map not loaded?', err);
+    }
+}
+
 async function startPlayback() {
     if (!selectedEventId.value) return;
     const evt = events.value.find((e) => e.id === selectedEventId.value);
     activeEventName.value = evt ? evt.name : 'Replay';
 
     await hideLiveFeatures();
+    showReplayBanner(activeEventName.value);
 
     const body = await std(`/api/replay/event/${selectedEventId.value}/play`, {
         method: 'POST',
@@ -415,18 +481,12 @@ async function stopPlayback() {
     session.value = null;
     if (pollHandle) clearInterval(pollHandle);
     restoreLiveFeatures();
+    hideReplayBanner();
 }
 
 async function exportEvent() {
     if (!selectedEventId.value) return;
-    const body = await std(`/api/replay/event/${selectedEventId.value}/export`) as unknown;
-    const blob = new Blob([JSON.stringify(body)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `replay-export-${selectedEventId.value}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await std(`/api/replay/event/${selectedEventId.value}/export`, { download: true });
 }
 
 async function deleteEvent() {

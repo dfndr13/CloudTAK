@@ -2,7 +2,7 @@ import type { App } from 'vue';
 import { markRaw } from 'vue';
 import type { PluginAPI, PluginInstance } from '../../plugin.ts';
 import type { MenuItemConfig } from '../../plugin.ts';
-import { IconHistory } from '@tabler/icons-vue';
+import { IconPlayerPlay } from '@tabler/icons-vue';
 import ReplayPanel from './ReplayPanel.vue';
 
 const MENU_KEY   = 'plugin-replay';
@@ -31,7 +31,7 @@ export default class ReplayPlugin implements PluginInstance {
             route:       ROUTE_NAME,
             tooltip:     'CloudTAK Replay',
             description: 'Record and play back CoT traffic for training and after-action review',
-            icon:        markRaw(IconHistory) as unknown as MenuItemConfig['icon'],
+            icon:        markRaw(IconPlayerPlay) as unknown as MenuItemConfig['icon'],
         } as MenuItemConfig);
     }
 
