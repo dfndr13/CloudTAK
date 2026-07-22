@@ -318,7 +318,6 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                             } else if (feat.properties.type.startsWith('t-x')) {
                                 client.ws.send(JSON.stringify({ type: 'task', connection: conn.id, data: feat }));
                             } else {
-                                console.log(`[ARCHIVE-DEBUG] id=${feat.id} FULL_PROPS=${JSON.stringify(feat.properties)} GEOM_TYPE=${feat.geometry && feat.geometry.type}`);
                                 client.ws.send(JSON.stringify({ type: 'cot', connection: conn.id, data: feat }));
                             }
                         } else {
