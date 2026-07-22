@@ -101,7 +101,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // is current before the stateless side connects
     const stateful = mode !== 'api' ? await ConfigStateful.env(envArgs) : undefined;
     const stateless = mode !== 'hub'
-        ? await ConfigStateless.env(envArgs, stateful ? { hub: stateful.hub } : {})
+        ? await ConfigStateless.env(envArgs, stateful ? { hub: stateful.hub, recorder: stateful.conns.recorder } : {})
         : undefined;
 
     await server({ stateful, stateless });
