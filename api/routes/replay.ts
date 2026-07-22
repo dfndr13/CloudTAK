@@ -12,6 +12,7 @@ import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../lib/auth.js';
 import Config from '../lib/config.js';
+import { CoTParser } from '@tak-ps/node-cot';
 import { bootstrapReplayTables } from '../lib/replay-recorder.js';
 import Player from '../lib/replay-player.js';
 
@@ -117,6 +118,85 @@ export default async function router(schema: Schema, config: Config) {
                 active: config.conns.recorder.active(),
                 event: config.conns.recorder.activeEvent || undefined,
             });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    // --- Direct-write capture (drawn/authored features, no live broadcast) ---
+    //
+    // Drawn shapes that are never Shared don't pass through ConnectionPool.cots(),
+    // so Recorder.record() never sees them. These two routes let the browser hand
+    // a feature's GeoJSON straight to Recorder, bypassing TAK Server and
+    // connection-pool.ts entirely - the feature is captured into the active
+    // recording without being broadcast live to anyone else.
+
+    await schema.post('/replay/record/feature', {
+        name: 'Record Drawn Feature',
+        group: 'Replay',
+        description: `
+            Directly capture a drawn/authored feature's current state into the
+            active recording. Bypasses TAK Server and connection-pool.ts entirely -
+            nothing is broadcast live. No-op if no recording is active.
+        `,
+        body: Type.Object({
+            id: Type.String(),
+            type: Type.Literal('Feature'),
+            // Record, not Type.Object({...}, { additionalProperties: true }):
+            // batch-schema's ajv instance is configured with
+            // removeAdditional: 'all', which strips unenumerated properties
+            // regardless of additionalProperties - silently dropping things
+            // like shape/stroke/fill and breaking CoTParser.from_geojson for
+            // e.g. circles ("must define a feature.properties.shape.ellipse
+            // property"). A Record has no fixed property list, so nothing
+            // counts as "additional" and nothing gets stripped. Matches the
+            // same pattern already used for GeoJSONFeature in lib/types.ts.
+            properties: Type.Record(Type.String(), Type.Unknown()),
+            geometry: Type.Unknown(),
+        }),
+        res: Type.Any(),
+    }, async (req, res) => {
+        try {
+            await Auth.as_user(config, req);
+
+            if (!config.conns.recorder.active()) {
+                res.json({ recorded: false });
+                return;
+            }
+
+            const cot = await CoTParser.from_geojson(req.body as Parameters<typeof CoTParser.from_geojson>[0]);
+            const xml = await CoTParser.to_xml(cot);
+            await config.conns.recorder.recordDirect(req.body.id, cot.type(), xml);
+
+            res.json({ recorded: true });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.delete('/replay/record/feature/:id', {
+        name: 'Record Feature Removal',
+        group: 'Replay',
+        description: `
+            Mark a drawn/authored feature as removed at the current point in the
+            active recording, so playback shows it disappearing rather than
+            leaving its last known state on the map forever. No-op if no
+            recording is active.
+        `,
+        params: Type.Object({ id: Type.String() }),
+        res: Type.Any(),
+    }, async (req, res) => {
+        try {
+            await Auth.as_user(config, req);
+
+            if (!config.conns.recorder.active()) {
+                res.json({ recorded: false });
+                return;
+            }
+
+            await config.conns.recorder.recordRemoval(req.params.id);
+
+            res.json({ recorded: true });
         } catch (err) {
             Err.respond(err, res);
         }
