@@ -53,6 +53,17 @@ export async function bootstrapReplayTables(config: Config): Promise<void> {
         await config.pg.execute(sql`
             CREATE INDEX IF NOT EXISTS replay_cot_event_time_idx ON replay_cot (event, recorded_at)
         `);
+        // 'cot' rows are a normal CoT snapshot (live traffic, or a direct-write
+        // capture of a drawn/authored feature). 'removed' rows are a marker
+        // saying "this uid stopped existing here" - written when a user
+        // explicitly deletes one of their own drawn features via the reliable
+        // db.remove() path, since real CoT delete tasking (t-x-d-d) isn't
+        // reliably delivered for features that were never Shared in the
+        // first place. Added via ALTER ... IF NOT EXISTS since replay_cot
+        // may already exist from before this column was introduced.
+        await config.pg.execute(sql`
+            ALTER TABLE replay_cot ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'cot'
+        `);
     } catch (err) {
         console.error('[replay] table bootstrap failed', err);
     }
@@ -156,6 +167,55 @@ export default class Recorder {
             } catch (err) {
                 console.error('[replay] record insert failed', err);
             }
+        }
+    }
+
+    /**
+     * Direct-write capture for a drawn/authored feature that isn't Shared,
+     * so it never flows through ConnectionPool.cots()/record() above. Called
+     * straight from the /replay/record/feature route - no ConnectionConfig
+     * involved, hence connection is always null and source is 'authored'
+     * rather than 'gateway'.
+     */
+    async recordDirect(uid: string, cotType: string | null, xml: string, source = 'authored'): Promise<void> {
+        if (!this.activeEvent) return;
+        await this.ensureBootstrapped();
+
+        const sha = contentHash(xml);
+        if (this.recentHashes.get(uid) === sha) return;
+        this.recentHashes.set(uid, sha);
+
+        try {
+            await this.config.pg.execute(sql`
+                INSERT INTO replay_cot (event, connection, source, uid, cot_type, sha256, cot_xml, kind)
+                VALUES (${this.activeEvent.id}, NULL, ${source}, ${uid}, ${cotType}, ${sha}, ${xml}, 'cot')
+            `);
+        } catch (err) {
+            console.error('[replay] direct record insert failed', err);
+        }
+    }
+
+    /**
+     * Write a "removed at time X" marker for uid, distinct from a normal CoT
+     * snapshot row (see bootstrapReplayTables' kind column). Playback
+     * (replay-player.ts) picks this up as the most-recent row for uid and
+     * tells the browser to drop the feature instead of replaying it.
+     */
+    async recordRemoval(uid: string, source = 'authored'): Promise<void> {
+        if (!this.activeEvent) return;
+        await this.ensureBootstrapped();
+
+        // Any future direct-write for this uid is a genuinely new state, not
+        // a duplicate of whatever it looked like before it was removed.
+        this.recentHashes.delete(uid);
+
+        try {
+            await this.config.pg.execute(sql`
+                INSERT INTO replay_cot (event, connection, source, uid, cot_type, sha256, cot_xml, kind)
+                VALUES (${this.activeEvent.id}, NULL, ${source}, ${uid}, NULL, '', '', 'removed')
+            `);
+        } catch (err) {
+            console.error('[replay] removal marker insert failed', err);
         }
     }
 }
