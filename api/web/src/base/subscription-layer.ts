@@ -57,7 +57,6 @@ export default class SubscriptionLayer {
         const list = data as unknown as MissionLayerList;
 
         list.data.sort((a, b) => {
-            // Consistent sort by name
             return a.name.localeCompare(b.name);
         });
 
@@ -151,14 +150,14 @@ export default class SubscriptionLayer {
     async delete(
         layeruid: string
     ): Promise<void> {
-        const { error } = await server.DELETE('/api/marti/missions/{:name}/layer/{:uid}', {
+        const { error, response } = await server.DELETE('/api/marti/missions/{:name}/layer/{:uid}', {
             params: {
                 path: { ':name': this.parent.guid, ':uid': layeruid }
             },
             headers: this.headers()
         });
 
-        if (error) throw new Error('Failed to delete mission layer');
+        if (error && response.status !== 404) throw new Error('Failed to delete mission layer');
 
         await this.refresh();
     }

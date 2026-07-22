@@ -10,6 +10,7 @@ import MissionTemplate from './mission-template.ts';
 import type {
     Mission,
     MissionRole,
+    MissionRoleType,
     MissionList,
     MissionSubscriptions,
     MissionInvite
@@ -32,15 +33,6 @@ export type SubscriptionEvent = {
 
 /**
  * High Level Wrapper around the Data/Mission Sync API
- *
- * @property {string} guid - The unique identifier for the mission
- * @property {string} name - The name of the mission
- * @property {Mission} meta - The mission metadata
- * @property {MissionRole} role - The role of the user in the mission
- * @property {string} token - The CloudTAK Authentication token for API calls
- * @property {string} [missiontoken] - The mission token for authentication
- *
- * @property {boolean} subscribed - Whether the user is subscribed to the mission
  */
 export default class Subscription {
     guid: string;
@@ -165,13 +157,6 @@ export default class Subscription {
     /**
      * Loads an existing Subscription from the local DB an refreshes it,
      * or creates a new Subscription from the server if it does not exist locally.
-     *
-     * @param guid - The unique identifier for the mission
-     * @param opts - Options for loading the subscription
-     * @param opts.token - The CloudTAK Authentication token for API calls
-     * @param opts.reload - Whether to reload the mission from the local DB
-     * @param opts.missiontoken - The mission token for authentication
-     * @param opts.subscribed - Whether the user is subscribed to the mission
      */
     static async load(
         guid: string,
@@ -308,11 +293,13 @@ export default class Subscription {
                 body: patch
             });
 
-            this.meta = data as unknown as Mission;
+            if (data) {
+                Object.assign(this.meta, data as unknown as Mission);
 
-            await db.subscription.update(this.guid, {
-                meta: JSON.parse(JSON.stringify(this.meta)),
-            });
+                await db.subscription.update(this.guid, {
+                    meta: JSON.parse(JSON.stringify(this.meta)),
+                });
+            }
         }
 
         this._sync.postMessage({
@@ -326,14 +313,14 @@ export default class Subscription {
     }
 
     async delete(): Promise<void> {
-        const { data } = await server.DELETE('/api/marti/missions/{:name}', {
+        const { data, response } = await server.DELETE('/api/marti/missions/{:name}', {
             params: {
                 path: { ':name': this.guid }
             },
             headers: Subscription.headers(this.missiontoken)
         });
 
-        if (!data) throw new Error('Mission Error');
+        if (!data && response.status !== 404) throw new Error('Mission Error');
 
         await db.subscription.delete(this.meta.guid);
 
@@ -359,7 +346,7 @@ export default class Subscription {
             .get(this.guid)
 
         if (exists) {
-            this.meta = exists.meta;
+            Object.assign(this.meta, exists.meta);
             this.role = exists.role;
             this.missiontoken = exists.token;
             this.subscribed = exists.subscribed;
@@ -407,10 +394,7 @@ export default class Subscription {
     /**
      * List all locally stored missions, with optional filtering
      *
-     * @param filter - Filter options for the local mission list
      * @param filter.role - Filter by minimum role
-     * @param filter.subscribed - Filter by subscription status
-     * @param filter.dirty - Filter by dirty status
      */
     static async localList(
         filter?: {
@@ -509,6 +493,22 @@ export default class Subscription {
         if (error) throw new Error('Failed to invite user to mission');
     }
 
+    async changeRole(sub: { clientUid: string, username: string }, role: MissionRoleType): Promise<void> {
+        const { error } = await server.PUT('/api/marti/missions/{:name}/role', {
+            params: {
+                path: { ':name': this.guid }
+            },
+            headers: Subscription.headers(this.missiontoken),
+            body: {
+                clientUid: sub.clientUid,
+                username: sub.username,
+                role
+            }
+        });
+
+        if (error) throw new Error('Failed to change user role');
+    }
+
     async invites(): Promise<MissionInvite[]> {
         const { data, error } = await server.GET('/api/marti/missions/{:guid}/invite', {
             params: {
@@ -546,6 +546,8 @@ export default class Subscription {
     }
 
     async subscriptions(): Promise<MissionSubscriptions> {
+        if (!navigator.onLine) return [];
+
         const { data } = await server.GET('/api/marti/missions/{:name}/subscriptions/roles', {
             params: {
                 path: { ':name': this.guid }

@@ -97,6 +97,7 @@ import {
     IconShield,
     IconClock,
     IconMapPin,
+    IconPhone,
     IconCircleCheck,
 } from '@tabler/icons-vue';
 import CoordinateType from './CoordinateType.vue';
@@ -124,6 +125,8 @@ const props = defineProps({
         default: false
     }
 })
+
+const emit = defineEmits([ 'update' ]);
 
 type SettingItem = {
     key: string;
@@ -164,6 +167,12 @@ const settings = computed<SettingItem[]>(() => {
             key: 'tak_callsign',
             label: 'User Callsign',
             icon: IconUser,
+            type: 'input',
+        },
+        {
+            key: 'tak_phone',
+            label: 'Phone Number',
+            icon: IconPhone,
             type: 'input',
         },
         {
@@ -219,7 +228,8 @@ onMounted(async () => {
         tak_group: (await ProfileConfig.get('tak_group'))?.value,
         tak_role: (await ProfileConfig.get('tak_role'))?.value,
         tak_type: (await ProfileConfig.get('tak_type'))?.value,
-        tak_loc_freq: (await ProfileConfig.get('tak_loc_freq'))?.value
+        tak_loc_freq: (await ProfileConfig.get('tak_loc_freq'))?.value,
+        tak_phone: (await ProfileConfig.get('tak_phone'))?.value
     } as Profile;
 
     if (p.tak_group && groups.value[p.tak_group]) {
@@ -233,7 +243,6 @@ onMounted(async () => {
 
     profile.value = p;
 
-    // Snapshot initial values
     for (const item of settings.value) {
         previousValues[item.key] = (profile.value as Profile)[item.key as keyof Profile];
     }
@@ -282,7 +291,6 @@ async function saveField(key: string) {
         mapStore.defaultPointType = p.tak_type || 'u-d-p';
     }
 
-    // Show saved indicator
     savedKey.value = key;
     changedFields.value.delete(key);
     previousValues[key] = (profile.value as Profile)[key as keyof Profile];
@@ -291,15 +299,17 @@ async function saveField(key: string) {
     saveTimeout = setTimeout(() => {
         savedKey.value = undefined;
     }, 2000);
+
+    if (props.mode === 'emit') {
+        emit('update', key);
+    }
 }
 
-// Watch for changes to auto-save non-input fields
 watch(
     () => profile.value,
     async (newProfile) => {
         if (!newProfile || loading.value) return;
 
-        // Detect which fields changed
         for (const item of settings.value) {
             const current = (newProfile as Profile)[item.key as keyof Profile];
             if (current !== previousValues[item.key]) {

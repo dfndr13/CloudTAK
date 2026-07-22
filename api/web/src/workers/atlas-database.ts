@@ -4,7 +4,7 @@
 */
 
 import { std } from '../std.ts';
-import { db } from '../database.ts';
+import { db, withDbRetry } from '../database.ts';
 import type { DBSubscriptionChanges } from '../database.ts';
 import { LngLatBounds } from 'maplibre-gl'
 import jsonata from 'jsonata';
@@ -33,6 +33,14 @@ export default class AtlasDatabase {
     atlas: Atlas;
 
     cots: Map<string, COT>;
+
+    // Archived feature ids as last seen from the server - used by
+    // loadArchive() to prune features deleted remotely
+    archiveIds: Set<string>;
+
+    // While base features are hydrating, disallow loadArchive() from running to avoid
+    // competing against a half-populated store
+    hydrating?: Promise<void>;
 
     // Stores Active Mission if present
     mission?: string;
@@ -66,6 +74,7 @@ export default class AtlasDatabase {
         this.atlas = atlas;
 
         this.cots = new Map();
+        this.archiveIds = new Set();
 
         this.pendingCreate = new Map();
         this.pendingUpdate = new Map();
@@ -106,11 +115,10 @@ export default class AtlasDatabase {
 
     async init(): Promise<void> {
         COT.selfUid = this.atlas.profile.uid();
-        try {
-            await this.loadArchive();
-        } catch (err) {
-            console.error('Failed to load archived features:', err);
-        }
+
+        this.hydrating = this.hydrate().catch((err) => {
+            console.error('Failed to hydrate features from local database:', err);
+        });
 
         // recordingActive is normally kept in sync by ReplayPanel.vue pushing
         // status via setRecordingActive() on mount/start/stop. But this worker
@@ -144,7 +152,6 @@ export default class AtlasDatabase {
             coordEach(cot.geometry, (coord) => {
                 const min = coord.slice(0, 2) as [number, number];
 
-                // Don't Send Invalid Coords
                 if (min[0] < -180 || min[0] > 180 || min[1] < -90 || min[1] > 90) {
                     return;
                 }
@@ -172,6 +179,10 @@ export default class AtlasDatabase {
         const display_stale = (await ProfileConfig.get('display_stale'))?.value || 'Immediate';
 
         for (const cot of this.cots.values()) {
+            // The user's own position is drawn by the GeolocateControl puck
+            // rather than as a CoT marker on the map.
+            if (cot.is_self) continue;
+
             const stale = new Date(cot.properties.stale).getTime();
 
             if (this.pendingHidden.has(String(cot.id))) {
@@ -224,7 +235,7 @@ export default class AtlasDatabase {
 
         for (const id of this.pendingUnhide.values()) {
             const cot = this.cots.get(id);
-            if (!cot) continue;
+            if (!cot || cot.is_self) continue;
 
             const render = cot.as_rendered();
             diff.add.push(render);
@@ -233,7 +244,7 @@ export default class AtlasDatabase {
         this.pendingUnhide.clear();
 
         for (const cot of this.pendingCreate.values()) {
-            if (staleDelete.has(cot.id) || this.pendingDelete.has(cot.id)) continue;
+            if (cot.is_self || staleDelete.has(cot.id) || this.pendingDelete.has(cot.id)) continue;
             const render = cot.as_rendered();
             diff.add.push(render);
         }
@@ -241,7 +252,7 @@ export default class AtlasDatabase {
         this.pendingCreate.clear();
 
         for (const cot of this.pendingUpdate.values()) {
-            if (staleDelete.has(cot.id) || this.pendingDelete.has(cot.id)) continue;
+            if (cot.is_self || staleDelete.has(cot.id) || this.pendingDelete.has(cot.id)) continue;
 
             const render = cot.as_rendered();
 
@@ -258,7 +269,7 @@ export default class AtlasDatabase {
 
         for (const id of staleDelete) {
             this.cots.delete(id);
-            await db.feature.delete(id);
+            await withDbRetry(() => db.feature.delete(id));
         }
 
         for (const id of this.pendingDelete) {
@@ -268,7 +279,7 @@ export default class AtlasDatabase {
             diff.remove.push(cot.vectorId());
 
             this.cots.delete(id);
-            await db.feature.delete(id);
+            await withDbRetry(() => db.feature.delete(id));
         }
 
         this.pendingDelete.clear();
@@ -315,6 +326,7 @@ export default class AtlasDatabase {
         const expression = jsonata(filter);
 
         for (const cot of this.cots.values()) {
+            if (this.pendingDelete.has(cot.id)) continue;
             if (await expression.evaluate(cot.as_feature()) === true) {
                 cots.add(cot);
             }
@@ -411,19 +423,86 @@ export default class AtlasDatabase {
     }
 
     /**
+     * Hydrate the in-memory store from the local Dexie feature database.
+     *
+     * Runs at startup instead of loadArchive() so that every feature the
+     * client has previously persisted (archived and non-archived alike) is
+     * rendered immediately without waiting on a network round-trip. This lets
+     * CloudTAK restore its last-known state when refreshed offline or on a
+     * degraded connection. The authoritative reconciliation against the
+     * server still happens later via loadArchive() during the AtlasSync full
+     * sync.
+     */
+    async hydrate(): Promise<void> {
+        const features = await db.feature.toArray();
+
+        for (const feat of features) {
+            // Seed archiveIds so the subsequent loadArchive() can prune
+            // features deleted on the server while this client was offline -
+            // without this the cached copy would linger until a later sync.
+            if (feat.properties.archived) {
+                this.archiveIds.add(String(feat.id));
+            }
+
+            await this.add({
+                ...feat,
+                type: 'Feature'
+            } as InputFeature, {
+                skipSave: true,
+                skipBroadcast: true,
+                // The feature already lives in db.feature and is a
+                // CONNECTION-origin profile feature, so avoid the redundant
+                // write-back and the per-feature mission-store scan.
+                skipDatabase: true,
+                skipMissionLookup: true
+            });
+        }
+
+        this.atlas.postMessage({
+            type: WorkerMessageType.Feature_Archived_Added,
+        });
+    }
+
+    /**
      * Load Archived CoTs
+     *
+     * Reconciles the local store against the server's archive: features are
+     * added/updated idempotently and archived features that were previously
+     * loaded from the server but no longer exist there (deleted by another
+     * client, possibly while this client was disconnected) are removed
+     * locally. Only ids in `archiveIds` (seen from the server on a prior
+     * load) are prune candidates, so a freshly drawn feature whose PUT is
+     * still in flight is never removed.
      */
     async loadArchive(): Promise<void> {
+        // Wait for the local hydrate to finish first so we never reconcile
+        // against a half-populated store or resurrect a feature the server
+        // deleted (hydrate seeds archiveIds; this prunes against it).
+        if (this.hydrating) await this.hydrating;
+
         const archive = await std('/api/profile/feature', {
             token: this.atlas.token
         }) as APIList<Feature>;
 
+        const serverIds = new Set<string>(archive.items.map((f) => String(f.id)));
+
         for (const a of archive.items) {
-            this.add(a, {
+            await this.add(a, {
                 skipSave: true,
                 skipBroadcast: true
             });
         }
+
+        for (const id of this.archiveIds) {
+            if (serverIds.has(id)) continue;
+
+            const cot = this.cots.get(id);
+            if (!cot || !cot.properties.archived || cot.origin.mode !== OriginMode.CONNECTION) continue;
+
+            await this.remove(id, { skipNetwork: true });
+        }
+
+        this.archiveIds = serverIds;
 
         this.atlas.postMessage({
             type: WorkerMessageType.Feature_Archived_Added,
@@ -471,17 +550,13 @@ export default class AtlasDatabase {
                 this.pendingDelete.add(breadcrumbId);
             }
 
-            await db.feature.delete(breadcrumbId);
+            await withDbRetry(() => db.feature.delete(breadcrumbId));
         }
 
         if (cot.origin.mode === OriginMode.CONNECTION) {
             this.pendingDelete.add(id);
 
             if (cot.properties.archived) {
-                this.atlas.postMessage({
-                    type: WorkerMessageType.Feature_Archived_Removed
-                });
-
                 // Same archived/CONNECTION signal as the direct-write capture
                 // in add() - this is one of the user's own drawn/authored
                 // features. Record the removal regardless of skipNetwork:
@@ -499,6 +574,10 @@ export default class AtlasDatabase {
                         method: 'DELETE'
                     });
                 }
+
+                this.atlas.postMessage({
+                    type: WorkerMessageType.Feature_Archived_Removed
+                });
             }
         } else if (cot.origin.mode === OriginMode.MISSION && cot.origin.mode_id) {
             const subscription = await Subscription.from(cot.origin.mode_id, this.atlas.token, {
@@ -644,6 +723,9 @@ export default class AtlasDatabase {
      * @param opts.skipSave - Don't save the COT to the Profile Feature Database
      * @param opts.skipBroadcast - Don't broadcast the COT on the internal message bus to the UI
      * @param opts.authored - If the COT is authored, append creator information if the CoT is new & potentially add it to a mission
+     * @param opts.render - Defaults to true. When false, suppress the Mission_Change_Feature notification that reloads & re-renders the mission overlay. Callers adding many features to a mission at once (eg. a lasso import) should pass false and trigger a single loadMission() when finished.
+     * @param opts.skipDatabase - Don't persist a newly created COT back to the Dexie feature table. Used when the feature already originates from that table (eg. startup hydrate) so we avoid a redundant IndexedDB write per feature.
+     * @param opts.skipMissionLookup - Don't scan subscribed mission stores when checking for an existing COT. Used when the caller knows the feature is a CONNECTION-origin profile feature (eg. startup hydrate) so we avoid an IndexedDB mission scan per feature.
      */
     async add(
         feature: InputFeature,
@@ -651,6 +733,9 @@ export default class AtlasDatabase {
             skipSave?: boolean;
             skipBroadcast?: boolean;
             authored?: boolean,
+            render?: boolean,
+            skipDatabase?: boolean,
+            skipMissionLookup?: boolean,
         }
     ): Promise<COT | void> {
         if (!opts) opts = {};
@@ -659,16 +744,14 @@ export default class AtlasDatabase {
 
         const feat = feature as Feature;
 
-        // Check if CoT exists
         let exists = await this.get(feat.properties.id, {
-            mission: true
+            mission: opts.skipMissionLookup !== true
         });
 
         if (opts.authored && !exists) {
             feat.properties.creator = await this.atlas.profile.creator();
         }
 
-        // New CoT destined for a Mission
         if (
             !exists && (
                 (this.mission && opts.authored) // Authored CoT and we have an active Mission
@@ -707,40 +790,49 @@ export default class AtlasDatabase {
                 exists = await COT.load(feat, {
                     mode: OriginMode.MISSION,
                     mode_id: mission_guid
-                }, opts);
+                }, {
+                    // Destination is a Data Sync - the feature lives in the
+                    // mission, so never submit it to the profile feature API.
+                    skipSave: true
+                });
             } else {
                 await exists.update({
                     path: feat.path,
                     properties: feat.properties,
                     geometry: feat.geometry
-                }, { skipSave: opts.skipSave })
+                }, { skipSave: true })
             }
 
             await sub.feature.update(this.atlas, exists, {
                 skipNetwork: !opts.authored
             });
 
-            this.atlas.postMessage({
-                type: WorkerMessageType.Mission_Change_Feature,
-                body: {
-                    guid: mission_guid
-                }
-            });
+            if (opts.render !== false) {
+                this.atlas.postMessage({
+                    type: WorkerMessageType.Mission_Change_Feature,
+                    body: {
+                        guid: mission_guid
+                    }
+                });
+            }
 
             await this.breadcrumb.update(exists);
 
             return exists;
         } else {
             if (exists) {
-                await exists.update({
+                const changed = await exists.update({
                     path: feat.path,
                     properties: feat.properties,
                     geometry: feat.geometry
                 }, { skipSave: opts.skipSave })
 
-                this.pendingUpdate.set(exists.id, exists);
+                // Skip pendingUpdate for a not-yet-flushed pending-create COT
+                // (mutated in place) to avoid a duplicate add+update in one diff.
+                if (changed && !this.pendingCreate.has(exists.id)) {
+                    this.pendingUpdate.set(exists.id, exists);
+                }
 
-                // Sync profile if this is the user's own COT
                 if (exists.is_self) {
                     const remarks = this.atlas.profile.profile_remarks?.value;
                     const callsign = this.atlas.profile.profile_callsign?.value;
@@ -782,12 +874,15 @@ export default class AtlasDatabase {
                 this.pendingCreate.set(exists.id, exists);
                 this.cots.set(exists.id, exists);
 
-                await db.feature.put({
-                    id: exists.id,
-                    path: exists.path,
-                    properties: exists.properties,
-                    geometry: exists.geometry
-                });
+                const created = exists;
+                if (opts.skipDatabase !== true) {
+                    await withDbRetry(() => db.feature.put({
+                        id: created.id,
+                        path: created.path,
+                        properties: created.properties,
+                        geometry: created.geometry
+                    }));
+                }
 
                 if (opts.skipBroadcast !== true && exists.properties.archived) {
                     this.atlas.postMessage({
@@ -880,6 +975,26 @@ export default class AtlasDatabase {
             });
         } catch (err) {
             console.error('Failed to record feature removal to active recording:', err);
+        }
+    }
+
+    /**
+     * Batch variant of add() for importing many features at once (eg. a GeoJSON
+     * or lasso import). Runs the entire loop inside the worker so the caller
+     * pays a single Comlink round-trip instead of one per feature, and returns
+     * nothing so no COTs are serialized back across the worker boundary.
+     */
+    async addAll(
+        features: InputFeature[],
+        opts?: {
+            skipSave?: boolean;
+            skipBroadcast?: boolean;
+            authored?: boolean;
+            render?: boolean;
+        }
+    ): Promise<void> {
+        for (const feature of features) {
+            await this.add(feature, opts);
         }
     }
 

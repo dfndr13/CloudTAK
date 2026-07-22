@@ -143,7 +143,7 @@
             <TablerInput
                 v-model='menuFilter'
                 placeholder='Search...'
-                :autofocus='!mapStore.isMobileDetected'
+                :autofocus='!appStore.isMobileDetected'
                 icon='search'
                 class='mb-0'
             />
@@ -234,11 +234,18 @@
                                 stroke='1'
                                 class='mx-2'
                             />
-                            <span
-                                class='text-truncate'
-                                style='font-size: 18px;'
-                                v-text='username'
-                            />
+                            <div class='overflow-hidden'>
+                                <div
+                                    class='text-truncate'
+                                    style='font-size: 18px;'
+                                    v-text='username'
+                                />
+                                <div
+                                    class='text-muted'
+                                    style='font-size: 11px; line-height: 1.2;'
+                                    v-text='`v${version}`'
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -265,7 +272,6 @@
 
 <script setup lang='ts'>
 import { ref, onMounted, onUnmounted, computed, watch, onBeforeUnmount } from 'vue';
-import Session from '../../session.ts';
 import {
     IconUser,
     IconLogout,
@@ -289,7 +295,9 @@ import {
     TablerNone,
 } from '@tak-ps/vue-tabler';
 import { openSecondaryView } from '../../base/capacitor.ts';
+import { version } from '../../../package.json';
 import { useMapStore } from '../../stores/map.ts';
+import { useAppStore } from '../../stores/app.ts';
 import type { MenuItemConfig } from '../../stores/modules/menu.ts';
 import Config from '../../base/config.ts';
 import { useRouter } from 'vue-router';
@@ -301,6 +309,7 @@ import ProfileConfig from '../../base/profile.ts';
 const router = useRouter();
 
 const mapStore = useMapStore();
+const appStore = useAppStore();
 
 type AppSwitcherApplication = {
     name: string;
@@ -436,8 +445,7 @@ function handleSelect(item: MenuItemConfig) {
 }
 
 async function logout() {
-    await Session.destroy();
-    router.push("/login");
+    await appStore.logout();
 }
 
 function normalizeApplications(applications: unknown): AppSwitcherApplication[] {

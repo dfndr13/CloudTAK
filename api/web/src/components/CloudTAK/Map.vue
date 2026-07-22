@@ -15,9 +15,12 @@
             style='width: 100%;'
         />
 
-        <MapLoading v-if='loading || !mapStore.isLoaded' />
+        <MapLoading
+            v-if='loading || !mapStore.isMapLoaded'
+            :stage='mapStore.loadingStage'
+        />
 
-        <template v-if='mapStore.isLoaded && !loading'>
+        <template v-if='mapStore.isMapLoaded && !loading'>
             <WarnConfiguration
                 v-if='warnConfiguration'
                 @close='warnConfiguration = false'
@@ -100,141 +103,148 @@
                 <ActiveMission />
             </div>
             <div
+                v-if='mapStore.navigation.active'
+                class='position-absolute top-0 start-50 translate-middle-x'
+                style='z-index: 2;'
+            >
+                <Navigating />
+            </div>
+            <div
                 v-if='mode === "Default"'
-                class='position-absolute beginning-0 text-white'
+                class='position-absolute'
+                :class='{ "cloudtak-left-controls--nav": mapStore.navigation.active }'
                 style='
-                    top: 60px;
+                    top: 70px;
+                    left: 8px;
                 '
             >
-                <div
-                    class='border'
-                    style='
-                        z-index: 1;
-                        width: 40px;
-                        background-color: rgba(0, 0, 0, 0.2);
-                        border-radius: 0px 0px 6px 0px;
-                    '
-                >
-                    <div>
+                <div class='cloudtak-ctrl-group cloudtak-panel'>
+                    <div
+                        v-tooltip='"Search"'
+                        role='button'
+                        tabindex='0'
+                        title='Search Button'
+                        class='cloudtak-ctrl-btn'
+                        @click='searchBoxShown = !searchBoxShown'
+                    >
                         <IconSearch
-                            v-tooltip='"Search"'
-                            tabindex='0'
-                            title='Search Button'
-                            :size='32'
+                            :size='24'
                             stroke='2'
-                            :color='searchBoxShown ? "#1E90FF" : "#ffffff"'
-                            style='margin: 3px 2px'
-                            class='cursor-pointer cloudtak-hover'
-                            @click='searchBoxShown = !searchBoxShown'
+                            :color='searchBoxShown ? "#1E90FF" : undefined'
                         />
                     </div>
 
                     <div
-                        style='margin: 3px 3px'
-                        class='cursor-pointer cloudtak-hover'
+                        role='button'
+                        tabindex='0'
+                        class='cloudtak-ctrl-btn'
                         @click='toggleCompass'
                     >
                         <IconCompass
                             v-if='mapStore.userOrientationMode'
                             v-tooltip='"Orient North"'
-                            tabindex='0'
-                            :size='32'
+                            :size='24'
                             stroke='2'
                             color='#1E90FF'
                         />
                         <template v-else>
                             <IconCircleArrowUp
                                 v-tooltip='"Snap to North"'
-                                tabindex='0'
                                 :alt='`Map Rotated to ${humanBearing}`'
                                 :transform='`rotate(${360 - mapStore.bearing})`'
-                                :size='32'
+                                :size='24'
                                 stroke='2'
-                                :color='mapStore.bearing === 0 ? "#ffffff" : undefined'
                             />
                             <div
                                 v-if='mapStore.bearing !== 0'
-                                class='text-center'
+                                class='text-center cloudtak-ctrl-label'
                                 v-text='humanBearing'
                             />
                         </template>
                     </div>
+
                     <div
                         v-if='mapStore.pitch !== 0'
-                        style='margin: 3px 3px'
-                        class='cursor-pointer cloudtak-hover'
+                        role='button'
+                        tabindex='0'
+                        class='cloudtak-ctrl-btn'
                         @click='mapStore.map.setPitch(0)'
                     >
                         <IconAngle
                             v-tooltip='"Snap Flat"'
-                            tabindex='0'
                             :alt='`Map Pitch to ${humanPitch}`'
-                            :size='32'
+                            :size='24'
                             stroke='2'
                         />
                         <div
-                            v-if='mapStore.pitch !== 0'
-                            class='text-center'
+                            class='text-center cloudtak-ctrl-label'
                             v-text='humanPitch'
                         />
                     </div>
-                    <div
-                        v-if='displayZoom'
-                    >
-                        <IconPlus
+
+                    <template v-if='displayZoom'>
+                        <div
                             v-tooltip='"Zoom In"'
                             role='button'
                             tabindex='0'
                             title='Zoom In Button'
-                            :size='32'
-                            stroke='2'
-                            class='cursor-pointer cloudtak-hover'
-                            style='margin: 3px 3px'
+                            class='cloudtak-ctrl-btn'
                             @click='mapStore.map.setZoom(mapStore.map.getZoom() + 1);'
-                        />
-                        <IconMinus
+                        >
+                            <IconPlus
+                                :size='24'
+                                stroke='2'
+                            />
+                        </div>
+                        <div
                             v-tooltip='"Zoom Out"'
                             role='button'
                             tabindex='0'
                             title='Zoom Out Button'
-                            :size='32'
-                            stroke='2'
-                            class='cursor-pointer cloudtak-hover'
-                            style='margin: 3px 3px'
+                            class='cloudtak-ctrl-btn'
                             @click='mapStore.map.setZoom(mapStore.map.getZoom() - 1);'
-                        />
-                    </div>
+                        >
+                            <IconMinus
+                                :size='24'
+                                stroke='2'
+                            />
+                        </div>
+                    </template>
 
-                    <IconMountain
+                    <div
                         v-if='hasTerrain'
                         v-tooltip='mapStore.terrainEnabled ? "Disable 3D Terrain" : "Enable 3D Terrain"'
                         role='button'
                         tabindex='0'
                         title='3D Terrain'
-                        :size='32'
-                        stroke='2'
-                        class='cursor-pointer cloudtak-hover'
-                        :color='mapStore.terrainEnabled ? "#1E90FF" : "#FFFFFF"'
-                        style='margin: 3px 3px'
+                        class='cloudtak-ctrl-btn'
                         @click='mapStore.terrainEnabled ? mapStore.removeTerrain() : mapStore.addTerrain()'
-                    />
+                    >
+                        <IconMountain
+                            :size='24'
+                            stroke='2'
+                            :color='mapStore.terrainEnabled ? "#1E90FF" : undefined'
+                        />
+                    </div>
 
-                    <IconLockAccess
+                    <div
                         v-if='
                             (mapStore.radial.cot && mapStore.locked.length >= 2)
                                 || (!mapStore.radial.cot && mapStore.locked.length >= 1)
                         '
                         v-tooltip='"Map is locked to marker - Click to Unlock"'
                         title='Map is locked to marker - Click to Unlock'
-                        class='cursor-pointer cloudtak-hover'
                         role='button'
                         tabindex='0'
-                        color='red'
-                        :size='32'
-                        stroke='2'
-                        style='margin: 3px 3px'
+                        class='cloudtak-ctrl-btn'
                         @click='mapStore.locked.splice(0, mapStore.locked.length)'
-                    />
+                    >
+                        <IconLockAccess
+                            color='red'
+                            :size='24'
+                            stroke='2'
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -262,7 +272,7 @@
             </TablerModal>
 
             <div
-                v-if='mapStore.isLoaded && mode === "Default"'
+                v-if='mapStore.isMapLoaded && mode === "Default"'
                 class='d-flex position-absolute top-0 text-white'
                 style='
                     z-index: 5;
@@ -351,7 +361,7 @@
 
             <MainMenu
                 v-if='
-                    mapStore.isLoaded
+                    mapStore.isMapLoaded
                         && (
                             (noMenuShown && !isMobileDetected)
                             || (!noMenuShown)
@@ -361,7 +371,7 @@
             />
 
             <div
-                v-if='mapStore.isLoaded && isMobileDetected && mode === "Default"'
+                v-if='mapStore.isMapLoaded && isMobileDetected && mode === "Default"'
                 class='position-absolute'
                 style='
                     z-index: 4;
@@ -378,8 +388,10 @@
                 @selected='selectFeat($event)'
             />
 
+            <!-- Keyed on the radial target so repointing at a new feature remounts the component and regenerates its menu items -->
             <RadialMenu
                 v-else-if='mapStore.radial.mode'
+                :key='`${mapStore.radial.mode}:${mapStore.radial.cot?.properties?.id ?? ""}`'
                 @close='closeRadial'
                 @click='handleRadial($event)'
             />
@@ -438,6 +450,7 @@ import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount, useTemplateRef
 import BottomBar from './BottomBar/BottomBar.vue';
 import {useRoute, useRouter } from 'vue-router';
 import ActiveMission from './ActiveMission.vue';
+import Navigating from './Navigating.vue';
 import DrawOverlay from './util/DrawOverlay.vue';
 import WarnChannels from './util/WarnChannels.vue';
 import Notifications from './Notifications.vue';
@@ -486,7 +499,7 @@ import MapLoading from './MapLoading.vue';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import RadialMenu from './RadialMenu/RadialMenu.vue';
 import { useMapStore } from '../../stores/map.ts';
-import { useDeviceStore } from '../../stores/device.ts';
+import { useAppStore } from '../../stores/app.ts';
 import { DrawToolMode } from '../../stores/modules/draw.ts';
 import { useFloatStore } from '../../stores/float.ts';
 import { liveQuery } from 'dexie';
@@ -498,7 +511,7 @@ import { cutOverlayFeature } from './util/featureCut.ts';
 import MissionInviteModal from './Menu/Mission/MissionInviteModal.vue';
 
 const mapStore = useMapStore();
-const deviceStore = useDeviceStore();
+const appStore = useAppStore();
 const floatStore = useFloatStore();
 
 const hasTerrain = ref<boolean>(false);
@@ -515,12 +528,10 @@ const locationClickHandler = ref<((e: MapMouseEvent) => void) | null>(null);
 const height = ref<number>(window.innerHeight);
 const width = ref<number>(window.innerWidth);
 
-mapStore.isMobileDetected = detectMobile();
+appStore.isMobileDetected = detectMobile();
 
-// Show a popup if no channels are selected on load
 const warnChannels = ref<boolean>(false)
 
-// Show a popup if role/groups hasn't been set
 const warnConfiguration = ref<boolean>(false);
 
 const searchBoxShown = ref(false);
@@ -571,7 +582,12 @@ const isMobileDetected = computed(() => {
 });
 
 watch(isMobileDetected, () => {
-    mapStore.isMobileDetected = isMobileDetected.value;
+    appStore.isMobileDetected = isMobileDetected.value;
+});
+
+watch(() => appStore.resolvedTheme, (theme) => {
+    if (!mapStore._map || !mapStore.isMapLoaded) return;
+    mapStore.map.setGlobalStateProperty('theme', theme);
 });
 
 const displayZoom = computed(() => {
@@ -602,7 +618,6 @@ const toggleCompass = () => {
     } else if (mapStore.bearing !== 0) {
         mapStore.map.setBearing(0);
     } else {
-        // Was at bearing 0, now enable user orientation mode
         mapStore.userOrientationMode = true;
     }
 }
@@ -646,7 +661,7 @@ onMounted(async () => {
         };
     });
 
-    mapStore.map.on('mouseleave', () => {
+    mapStore.map.on('mouseleave' as Parameters<typeof mapStore.map.on>[0], () => {
         mouseCoord.value = null;
     });
 
@@ -702,11 +717,21 @@ onBeforeUnmount(() => {
 });
 
 function selectFeat(selectedFeat: MapGeoJSONFeature | COT) {
-    mapStore.select.feats = [];
-
     if (selectedFeat instanceof COT) {
-        router.push(`/cot/${selectedFeat.properties.id}`);
+        // Mirror a direct marker click - open the radial menu for the CoT rather than the CoTView sidebar
+        const lngLat = mapStore.map.unproject([mapStore.select.x, mapStore.select.y]);
+
+        mapStore.select.feats = [];
+
+        void mapStore.radialClick(selectedFeat.as_feature(), {
+            lngLat,
+            point: mapStore.map.project(lngLat),
+            mode: 'cot'
+        }).catch((err) => {
+            console.error('Failed to open radial menu for selected CoT', err);
+        });
     } else {
+        mapStore.select.feats = [];
         mapStore.viewedFeature = selectedFeat;
         router.push(`/menu/feature`);
     }
@@ -735,12 +760,10 @@ async function toLocation() {
 }
 
 function setLocation() {
-    // Always enter manual location setting mode when button is clicked
     mapStore.manualLocationMode = true;
     mode.value = 'SetLocation';
     mapStore.map.getCanvas().style.cursor = 'crosshair';
 
-    // Store the handler so we can remove it later if needed
     locationClickHandler.value = async (e: MapMouseEvent) => {
         mapStore.map.getCanvas().style.cursor = '';
         mode.value = 'Default';
@@ -763,7 +786,6 @@ function cancelLocationSetting() {
     mode.value = 'Default';
     mapStore.map.getCanvas().style.cursor = '';
 
-    // Remove the specific location click handler if it exists
     if (locationClickHandler.value) {
         mapStore.map.off('click', locationClickHandler.value);
         locationClickHandler.value = null;
@@ -771,18 +793,15 @@ function cancelLocationSetting() {
 }
 
 async function exitManualMode() {
-    // Switch back to automatic GPS mode
     mapStore.manualLocationMode = false;
     mode.value = 'Default';
     mapStore.map.getCanvas().style.cursor = '';
 
-    // Remove the specific location click handler if it exists
     if (locationClickHandler.value) {
         mapStore.map.off('click', locationClickHandler.value);
         locationClickHandler.value = null;
     }
 
-    // Immediately set location to loading state for UI feedback
     mapStore.location = LocationState.Loading;
 
     // Remove current location dot from map by removing user's CoT
@@ -790,11 +809,9 @@ async function exitManualMode() {
     const userUid = `ANDROID-CloudTAK-${username ? username.value : 'unknown'}`;
     await mapStore.worker.db.remove(userUid);
 
-    // Clear manual location and wait for it to complete
     await mapStore.worker.profile.update({ tak_loc: null });
 
-    // Restart GPS watch to ensure fresh GPS acquisition
-    deviceStore.geolocation.startWatch(mapStore.locationCallback);
+    void mapStore.startLocationWatch();
 
     await mapStore.refresh();
 }
@@ -876,7 +893,6 @@ async function handleRadial(event: string): Promise<void> {
         const line = turfLineString(cotFeat.geometry.coordinates as [number, number][]);
         const click = turfPoint([mapStore.radial.lngLat!.lng, mapStore.radial.lngLat!.lat]);
 
-        // Snap click to the nearest point exactly on the line, then split there
         const snapped = nearestPointOnLine(line, click);
         const split = lineSplit(line, snapped);
 
@@ -943,6 +959,72 @@ async function handleRadial(event: string): Promise<void> {
 
 .alert-pulse {
     animation: alert-pulse 1.2s ease-in-out infinite;
+}
+
+.cloudtak-navigating {
+    z-index: 2;
+    width: min(640px, calc(100vw - 16px));
+    border-radius: 0px 0px 8px 8px;
+}
+
+/*
+ * On small screens the banner would overlap the top controls (Active Mission, tools and menu);
+ * drop it below them so they stay usable and round all four corners.
+ */
+@media (max-width: 767.98px) {
+    .cloudtak-navigating {
+        margin-top: 66px;
+        border-radius: 8px;
+    }
+
+    .cloudtak-left-controls--nav {
+        top: 126px !important;
+    }
+}
+
+.cloudtak-ctrl-group {
+    display: flex;
+    flex-direction: column;
+    width: 40px;
+    overflow: hidden;
+}
+
+.cloudtak-ctrl-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 7px 0;
+    cursor: pointer;
+    color: inherit;
+    transition: background-color 0.15s ease;
+}
+
+.cloudtak-ctrl-btn:focus-visible {
+    outline: none;
+}
+
+.cloudtak-ctrl-btn:not(:first-child) {
+    border-top: 1px solid var(--tblr-border-color);
+}
+
+html[data-bs-theme='dark'] .cloudtak-ctrl-btn:hover,
+html[data-bs-theme='dark'] .cloudtak-ctrl-btn:focus-visible,
+html[data-bs-theme='dark'] .cloudtak-ctrl-btn:focus-within {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-bs-theme='light'] .cloudtak-ctrl-btn:hover,
+html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-visible,
+html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+
+.cloudtak-ctrl-label {
+    font-size: 11px;
+    line-height: 1;
+    margin-top: 2px;
 }
 
 .maplibregl-ctrl-scale {
