@@ -5,7 +5,7 @@ import { tasks, type RetentionTaskConfig } from '../src/tasks.js';
 test('retention tasks are registered', () => {
     assert.deepStrictEqual(
         tasks.map(task => task.name),
-        ['connection-feature', 'chat', 'import', 'feature'],
+        ['connection-feature', 'chat', 'import', 'feature', 'replay'],
     );
 });
 
@@ -16,6 +16,15 @@ test('connection-feature is enabled unless explicitly disabled', () => {
     assert.strictEqual(task.enabled({}), true);
     assert.strictEqual(task.enabled({ 'retention::connection-feature::enabled': true }), true);
     assert.strictEqual(task.enabled({ 'retention::connection-feature::enabled': false }), false);
+});
+
+test('replay is enabled unless explicitly disabled', () => {
+    const task = tasks.find(t => t.name === 'replay');
+    assert.ok(task?.enabled);
+
+    assert.strictEqual(task.enabled({}), true);
+    assert.strictEqual(task.enabled({ 'retention::replay::enabled': true }), true);
+    assert.strictEqual(task.enabled({ 'retention::replay::enabled': false }), false);
 });
 
 test('chat/import/feature are opt-in', () => {

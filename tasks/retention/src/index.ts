@@ -15,7 +15,7 @@ async function runOnce(): Promise<void> {
     }
 
     const url = new URL('/api/config', apiUrl);
-    url.searchParams.set('keys', 'retention::enabled,retention::connection-feature::enabled,retention::chat::enabled,retention::import::enabled,retention::feature::enabled');
+    url.searchParams.set('keys', 'retention::enabled,retention::connection-feature::enabled,retention::chat::enabled,retention::import::enabled,retention::feature::enabled,retention::replay::enabled');
 
     const res = await fetch(url, {
         headers: {
