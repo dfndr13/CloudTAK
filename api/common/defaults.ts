@@ -13,6 +13,8 @@ export const FullConfigDefaults: Partial<Static<typeof FullConfig>> = {
     'retention::import::days': 30,
     'retention::feature::enabled': false,
     'retention::feature::days': 30,
+    'retention::replay::enabled': true,
+    'retention::replay::days': 10,
     'notification::enabled': false,
     'notification::email::enabled': false,
     'notification::email::service': 'aws',

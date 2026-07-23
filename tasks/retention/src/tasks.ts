@@ -6,6 +6,7 @@ export interface RetentionTaskConfig {
     'retention::chat::enabled'?: boolean;
     'retention::import::enabled'?: boolean;
     'retention::feature::enabled'?: boolean;
+    'retention::replay::enabled'?: boolean;
 }
 
 export interface RetentionTaskResult {
@@ -79,5 +80,13 @@ export const tasks: RetentionTask[] = [{
     },
     run: async (): Promise<RetentionTaskResult> => {
         return await postRetention('feature');
+    },
+}, {
+    name: 'replay',
+    enabled: (config: RetentionTaskConfig): boolean => {
+        return config['retention::replay::enabled'] !== false;
+    },
+    run: async (): Promise<RetentionTaskResult> => {
+        return await postRetention('replay');
     },
 }];
