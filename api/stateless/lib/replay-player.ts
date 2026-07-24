@@ -10,8 +10,8 @@
 // feature - the layer-cert approach can be revisited later if/when this
 // needs to be visible to other users or persist in TAK Server.
 
-import CoT, { CoTParser } from '@tak-ps/node-cot';
-import Config from './config.js';
+import CoT, { CoTParser, ForceDelete } from '@tak-ps/node-cot';
+import type ConfigStateless from '../config.js';
 import { sql } from 'drizzle-orm';
 
 type ReplayCategory = 'aircraft' | 'uas' | 'ground' | 'maritime' | 'other';
@@ -29,19 +29,25 @@ function categorize(cotType: string, how?: string): ReplayCategory {
     return 'other';
 }
 
-function rewriteTimestamps(xml: string, playbackNow: Date): string {
+// Pulled out of rewriteTimestamps() so publishStateAt() can also use the
+// original stale window to decide whether a row has already expired as of
+// virtualNow (see the staleness check in publishStateAt), without duplicating
+// the same regex parsing twice.
+function computeStaleOffsetMs(xml: string): number {
     const timeMatch = xml.match(/\stime="([^"]*)"/);
     const staleMatch = xml.match(/\sstale="([^"]*)"/);
 
-    let staleOffsetMs = 30_000;
     if (timeMatch && staleMatch) {
         const origTime = new Date(timeMatch[1]).getTime();
         const origStale = new Date(staleMatch[1]).getTime();
         if (!isNaN(origTime) && !isNaN(origStale) && origStale > origTime) {
-            staleOffsetMs = origStale - origTime;
+            return origStale - origTime;
         }
     }
+    return 30_000;
+}
 
+function rewriteTimestamps(xml: string, playbackNow: Date, staleOffsetMs: number): string {
     const newTime = playbackNow.toISOString();
     const newStale = new Date(playbackNow.getTime() + staleOffsetMs).toISOString();
 
@@ -74,13 +80,14 @@ interface ReplayCotRow {
     cot_type: string | null;
     cot_xml: string;
     recorded_at: string;
+    kind: string;
 }
 
 export default class Player {
-    config: Config;
+    config: ConfigStateless;
     sessions: Map<string, PlaybackControl> = new Map();
 
-    constructor(config: Config) {
+    constructor(config: ConfigStateless) {
         this.config = config;
     }
 
@@ -181,7 +188,17 @@ export default class Player {
             return;
         }
 
-        await this.publishStateAt(s);
+        try {
+            await this.publishStateAt(s);
+        } catch (err) {
+            // Never let a bad tick kill the whole process (previously a
+            // single malformed/unexpected row here took down the entire
+            // Node process via an unhandled rejection, 502ing every route -
+            // not just replay - until Docker restarted the container).
+            // Playback still advances below so it doesn't get stuck
+            // retrying the same failing tick forever.
+            console.error(`[replay] tick failed for session ${sessionId}:`, err);
+        }
 
         s.virtualNow = new Date(s.virtualNow.getTime() + 1000 * s.speed);
 
@@ -200,16 +217,22 @@ export default class Player {
         // a real import) fires once instead of repeating every ~1s for the rest
         // of playback. A seek/jump instead asks for a full resync (fullSnapshot),
         // since the client's view no longer matches the new point in time.
+        // Both 'cot' and 'removed' kinds are fetched here (unlike the earlier
+        // version of this query, which excluded 'removed' entirely to avoid
+        // crashing on its empty cot_xml). DISTINCT ON (uid) now correctly picks
+        // a 'removed' row as the latest state for a uid once it's been deleted,
+        // and the loop below turns that into a ForceDelete rather than ever
+        // calling CoTParser.from_xml() on its empty cot_xml.
         const query = opts.fullSnapshot
             ? sql`
-                SELECT DISTINCT ON (uid) uid, cot_type, cot_xml, recorded_at
+                SELECT DISTINCT ON (uid) uid, cot_type, cot_xml, recorded_at, kind
                 FROM replay_cot
                 WHERE event = ${s.eventId}
                   AND recorded_at <= ${s.virtualNow.toISOString()}
                 ORDER BY uid, recorded_at DESC
             `
             : sql`
-                SELECT DISTINCT ON (uid) uid, cot_type, cot_xml, recorded_at
+                SELECT DISTINCT ON (uid) uid, cot_type, cot_xml, recorded_at, kind
                 FROM replay_cot
                 WHERE event = ${s.eventId}
                   AND recorded_at > ${s.lastPublishedAt.toISOString()}
@@ -223,11 +246,44 @@ export default class Player {
 
         const cots: CoT[] = [];
         for (const row of rows) {
+            // 'removed' rows (Recorder.recordRemoval()) carry no usable cot_xml/
+            // cot_type - never hand them to CoTParser.from_xml(). Turn them into
+            // a ForceDelete task instead, which flows through the same
+            // submitCots()/ConnectionPool.cots() path as a real t-x-d-d delete
+            // and is handled client-side by atlas-connection.ts. Sent regardless
+            // of category filtering since cot_type is unknown (NULL) for these
+            // rows - a removal for a uid the client doesn't have is a no-op there.
+            if (row.kind === 'removed') {
+                cots.push(new ForceDelete(row.uid));
+                continue;
+            }
+
             const category = categorize(row.cot_type || '', undefined);
             if (!s.activeCategories.has(category)) continue;
 
-            const rewritten = rewriteTimestamps(row.cot_xml, new Date());
-            cots.push(await CoTParser.from_xml(rewritten));
+            // Defense in depth: any other unexpected/malformed cot_xml (e.g. from
+            // an older export/import, or a future bug) skips just this one row
+            // instead of throwing an unhandled rejection that kills the whole
+            // tick - and, before the try/catch in tick() above, the whole process.
+            try {
+                const staleOffsetMs = computeStaleOffsetMs(row.cot_xml);
+
+                // A row whose own recorded stale window had already elapsed by
+                // this point in the original recording (e.g. a feed - like a
+                // camera integration - that just stopped sending updates, with
+                // no explicit removal marker ever written) shouldn't be
+                // resurrected as freshly-live just because it's still the latest
+                // row before virtualNow. Skipping it lets it stay gone, matching
+                // what actually happened in the original session, instead of
+                // rewriteTimestamps() below handing it a brand new future stale
+                // time on every publish.
+                if (new Date(row.recorded_at).getTime() + staleOffsetMs < s.virtualNow.getTime()) continue;
+
+                const rewritten = rewriteTimestamps(row.cot_xml, new Date(), staleOffsetMs);
+                cots.push(await CoTParser.from_xml(rewritten));
+            } catch (err) {
+                console.error(`[replay] skipping unparseable row for uid ${row.uid}:`, err);
+            }
         }
 
         if (cots.length === 0) return;
