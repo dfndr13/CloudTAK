@@ -91,6 +91,7 @@ services:
             - SigningSecret=${SigningSecret}
             - CLOUDTAK_Config_media_internal_url=${CLOUDTAK_Config_media_internal_url}
             - CLOUDTAK_Config_media_public_url=${CLOUDTAK_Config_media_public_url}
+            - CLOUDTAK_Config_media_url=${CLOUDTAK_Config_media_internal_url}
         ports:
             - "127.0.0.1:${MEDIA_PORT_API:-9997}:9997"
             - "${MEDIA_PORT_RTSP:-8554}:8554"
