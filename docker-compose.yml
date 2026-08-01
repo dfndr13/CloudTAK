@@ -9,7 +9,7 @@ services:
             - media
             - store
         ports:
-            - "5000:5000"
+            - "127.0.0.1:5000:5000"
         extra_hosts:
             - "ksutak.org:172.93.52.232"
         environment:
@@ -37,7 +37,7 @@ services:
           dockerfile: ./tasks/pmtiles/Dockerfile.compose
         restart: 'always'
         ports:
-            - "5002:5002"
+            - "127.0.0.1:5002:5002"
         environment:
             - PMTILES_URL=${PMTILES_URL}
             - SigningSecret=${SigningSecret}
@@ -96,7 +96,7 @@ services:
             - "127.0.0.1:${MEDIA_PORT_API:-9997}:9997"
             - "${MEDIA_PORT_RTSP:-8554}:8554"
             - "${MEDIA_PORT_RTMP:-1935}:1935"
-            - "${MEDIA_PORT_HLS:-8888}:8888"
+            - "127.0.0.1:${MEDIA_PORT_HLS:-8888}:8888"
             - "${MEDIA_PORT_SRT:-8890}:8890"
 
     postgis:
