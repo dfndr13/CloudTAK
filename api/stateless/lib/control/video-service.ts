@@ -145,11 +145,15 @@ export default class VideoServiceControl {
         this.config = config;
     }
 
-    async url(): Promise<URL | null> {
+    /**
+     * Fetch a single media::* URL setting, returning null if unset.
+     * The legacy media::url key is kept as a fallback until operators
+     * have fully migrated to the split internal/public keys.
+     */
+    private async settingValue(key: 'media::url' | 'media::internal_url' | 'media::public_url'): Promise<string | null> {
         try {
-            const url = await this.config.models.Setting.from('media::url');
-            if (!url.value) return null;
-            return new URL(url.value);
+            const kv = await this.config.models.Setting.from(key);
+            return (typeof kv.value === 'string' && kv.value) ? kv.value : null;
         } catch (err) {
             if (err instanceof Error && err.message.includes('Not Found')) {
                 return null;
@@ -159,35 +163,45 @@ export default class VideoServiceControl {
         }
     }
 
+    // Public, browser-facing URL - used to identify/compare stream URLs a client may have provided
+    async url(): Promise<URL | null> {
+        const video = await this.settings();
+        if (!video.configured || !video.publicUrl) return null;
+        return new URL(video.publicUrl);
+    }
+
     async settings(): Promise<{
         configured: boolean;
         url?: string;
+        publicUrl?: string;
         token?: string;
     }> {
-        let video;
+        const [internalValue, legacyValue, publicValue] = await Promise.all([
+            this.settingValue('media::internal_url'),
+            this.settingValue('media::url'),
+            this.settingValue('media::public_url'),
+        ]);
+
+        const internal = internalValue || legacyValue;
+        const external = publicValue || legacyValue || internalValue;
+
+        if (!internal) {
+            return {
+                configured: false,
+            };
+        }
 
         try {
-            const kv = await this.config.models.Setting.from('media::url');
-            if (kv.value && typeof kv.value === 'string' && new URL(kv.value)) {
-                video = kv.value;
-            } else {
-                throw new Err(400, null, 'Media Service URL is not configured');
-            }
+            new URL(internal);
+            if (external) new URL(external);
         } catch (err) {
-            if (err instanceof Error && err.message.includes('Not Found')) {
-                return {
-                    configured: false,
-                };
-            } else if (err instanceof Err) {
-                throw err;
-            } else {
-                throw new Err(500, err instanceof Error ? err : new Error(String(err)), 'Media Service Configuration Error');
-            }
+            throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Media Service URL is not configured');
         }
 
         return {
             configured: true,
-            url: video,
+            url: internal,
+            publicUrl: external || undefined,
             token: jwt.sign({
                 internal: true,
                 access: AuthResourceAccess.MEDIA,
@@ -233,16 +247,10 @@ export default class VideoServiceControl {
 
         const paths = await resPaths.typed(PathsList);
 
-        // Special case for supporting internal Docker Compose network
-        let external = video.url;
-        if (video.url && new URL(video.url).hostname === 'media') {
-            external = 'http://localhost';
-        }
-
         return {
             configured: video.configured,
             url: video.url,
-            external,
+            external: video.publicUrl,
             config: body,
             paths: paths.items,
         };
@@ -524,10 +532,13 @@ export default class VideoServiceControl {
 
         if (lease.proxy) {
             try {
-                // Media server hostname is always trusted; operators may add additional
-                // trusted proxy source hostnames/origins via the media::proxy::allow config
+                // Media server hostnames (internal and public) are always trusted, so a
+                // lease.proxy source that points back at our own media server - via either
+                // address - is permitted; operators may add additional trusted proxy source
+                // hostnames/origins via the media::proxy::allow config
                 const proxyAllow = [
                     new URL(video.url!).hostname,
+                    ...(video.publicUrl ? [new URL(video.publicUrl).hostname] : []),
                     ...(await this.config.models.Setting.typed('media::proxy::allow', [])).value,
                 ];
 
