@@ -1,15 +1,22 @@
 name: AWS ECR
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
+  workflow_dispatch:
+  # Disabled for the dfndr13 fork: this workflow targets dfpc-coe's own AWS
+  # accounts via secrets that GitHub never copies to forks (AWS_ACCOUNT_ID,
+  # AWS_REGION, AWS_STAGING_ACCOUNT_ID, AWS_STAGING_REGION), so it fails at
+  # the first "Configure AWS Credentials" step on every push/PR. Left as
+  # manual-only (workflow_dispatch) rather than deleted so it stays a small,
+  # easily-mergeable diff against upstream if this fork ever needs it back.
+  # push:
+  #   branches:
+  #     - main
+  # pull_request:
+  #   types:
+  #     - opened
+  #     - synchronize
+  #     - reopened
+  #     - ready_for_review
 
 permissions:
   id-token: write
