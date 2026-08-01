@@ -9,6 +9,11 @@ import { sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
+// CloudTAK 13.45+ (hub/api split): routes live in api/stateless/routes/, shared libs
+// moved to api/common/, and route files receive ConfigStateless (which still extends
+// the base Config owning pg/models/server — our raw drizzle SQL is unaffected).
+// This file therefore requires CloudTAK >= 13.45; the infra-TAK installer copies it
+// into api/stateless/routes/ and refuses to install onto a pre-split tree.
 import Auth from '../../common/auth.js';
 import type ConfigStateless from '../config.js';
 
@@ -111,9 +116,64 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 closed_at   TIMESTAMPTZ
             )
         `);
+        await config.pg.execute(sql`
+            CREATE TABLE IF NOT EXISTS dispatcher_settings (
+                key   TEXT PRIMARY KEY,
+                value JSONB NOT NULL
+            )
+        `);
     } catch (err) {
         console.error('[dispatcher] table bootstrap failed', err);
     }
+
+    // ── Settings (shared per-CloudTAK, e.g. agency identity on reports) ─────────
+
+    await schema.get('/dispatcher/settings', {
+        name: 'Get Dispatcher Settings',
+        group: 'Dispatcher',
+        description: 'All shared dispatcher settings as a key/value map',
+        res: Type.Any(),
+    }, async (req, res) => {
+        try {
+            await Auth.is_auth(config, req);
+            const rows = await query<{ key: string; value: unknown }>(config, sql`
+                SELECT key, value FROM dispatcher_settings
+            `);
+            const settings: Record<string, unknown> = {};
+            for (const r of rows) {
+                // Same jsonb normalize as asArray: a raw read can hand back a string.
+                settings[r.key] = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+            }
+            res.json({ settings });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.put('/dispatcher/settings/:key', {
+        name: 'Put Dispatcher Setting',
+        group: 'Dispatcher',
+        description: 'Upsert one shared dispatcher setting',
+        params: Type.Object({ key: Type.String() }),
+        body: Type.Object({ value: Type.Any() }),
+        res: Type.Any(),
+    }, async (req, res) => {
+        try {
+            await Auth.is_auth(config, req);
+            const encoded = JSON.stringify(req.body.value ?? null);
+            // Settings carry small blobs (agency logo as a downscaled data URI) — cap the
+            // row so a raw upload can't bloat the gis DB.
+            if (encoded.length > 400_000) throw new Err(400, null, 'Setting too large (400KB max)');
+            await config.pg.execute(sql`
+                INSERT INTO dispatcher_settings (key, value)
+                VALUES (${req.params.key}, ${encoded}::jsonb)
+                ON CONFLICT (key) DO UPDATE SET value = ${encoded}::jsonb
+            `);
+            res.json({ ok: true });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
 
     // ── Events ──────────────────────────────────────────────────────────────────
 
@@ -249,13 +309,19 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const number = `${bumped[0].prefix}-${String(bumped[0].seq).padStart(3, '0')}`;
 
             const id = randomUUID();
+            // Details entered at creation also seed the notes log as its first entry —
+            // dispatchers work off the running note stream, where details-only was invisible.
+            const seedNotes = req.body.details
+                ? [{ text: req.body.details, time: new Date().toISOString() }]
+                : [];
             const incidents = await query<IncidentRow>(config, sql`
                 INSERT INTO dispatcher_incidents
-                    (id, event_id, number, type, address, lat, lon, dispatcher, details)
+                    (id, event_id, number, type, address, lat, lon, dispatcher, details, notes)
                 VALUES
                     (${id}, ${req.params.eventid}, ${number}, ${req.body.type ?? null},
                      ${req.body.address ?? null}, ${req.body.lat}, ${req.body.lon},
-                     ${req.body.dispatcher ?? null}, ${req.body.details ?? null})
+                     ${req.body.dispatcher ?? null}, ${req.body.details ?? null},
+                     ${JSON.stringify(seedNotes)}::jsonb)
                 RETURNING id, event_id, number, type, address, lat, lon, dispatcher, details,
                           status, assigned, notes, created_at, closed_at
             `);

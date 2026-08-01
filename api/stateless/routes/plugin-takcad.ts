@@ -7,6 +7,8 @@
 import { Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
+// CloudTAK 13.45+ (hub/api split) — see plugin-dispatcher.ts header; same contract:
+// api/stateless/routes/ placement, libs from api/common/, ConfigStateless signature.
 import Auth from '../../common/auth.js';
 import type ConfigStateless from '../config.js';
 import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
