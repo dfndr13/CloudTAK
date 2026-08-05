@@ -87,6 +87,15 @@ services:
     media:
         image: ghcr.io/dfpc-coe/media-infra:v9.8.0
         restart: 'always'
+        # media-infra is a third-party image with two known bugs affecting video
+        # playback (see media-infra-patches/README.md). This entrypoint reapplies
+        # both fixes to the compiled files on every container start, before /start
+        # (the image's real entrypoint) runs - so they survive recreation/re-pull
+        # instead of only living in a hand-patched running container.
+        entrypoint: ["/patches/apply-patches.sh"]
+        command: ["/start"]
+        volumes:
+            - ./media-infra-patches:/patches:ro
         environment:
             - API_URL=${API_URL}
             - SigningSecret=${SigningSecret}
