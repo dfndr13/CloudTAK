@@ -1,0 +1,40 @@
+import { CloudTAKRemotePath, Path } from './types.js';
+export function isHLSPath(source) {
+    if (!source)
+        return false;
+    return source.startsWith('http');
+}
+// RTSP proxy sources pointing at our own public media hostname refer to the sibling
+// ingest MediaMTX container on the same docker network - this container can't hairpin
+// back out to its own host's public IP to reach it, so rewrite to the internal alias.
+export function ingestSource(source) {
+    if (!source)
+        return source;
+    try {
+        const url = new URL(source);
+        if ((url.protocol === 'rtsp:' || url.protocol === 'rtsps:') && url.hostname === 'video.ksutak.org') {
+            url.hostname = 'mediamtx';
+        }
+        return url.toString();
+    }
+    catch {
+        return source;
+    }
+}
+export function createPayload(path) {
+    if (path.proxy) {
+        return {
+            name: path.path,
+            record: path.recording,
+            source: ingestSource(path.proxy),
+            sourceOnDemand: true
+        };
+    }
+    else {
+        return {
+            name: path.path,
+            record: path.recording,
+        };
+    }
+}
+//# sourceMappingURL=payload.js.map
