@@ -150,7 +150,7 @@ export default class VideoServiceControl {
      * The legacy media::url key is kept as a fallback until operators
      * have fully migrated to the split internal/public keys.
      */
-    private async settingValue(key: 'media::url' | 'media::internal_url' | 'media::public_url'): Promise<string | null> {
+    private async settingValue(key: 'media::url' | 'media::internal_url' | 'media::public_url' | 'media::playback_url'): Promise<string | null> {
         try {
             const kv = await this.config.models.Setting.from(key);
             return (typeof kv.value === 'string' && kv.value) ? kv.value : null;
@@ -174,12 +174,14 @@ export default class VideoServiceControl {
         configured: boolean;
         url?: string;
         publicUrl?: string;
+        playbackUrl?: string;
         token?: string;
     }> {
-        const [internalValue, legacyValue, publicValue] = await Promise.all([
+        const [internalValue, legacyValue, publicValue, playbackValue] = await Promise.all([
             this.settingValue('media::internal_url'),
             this.settingValue('media::url'),
             this.settingValue('media::public_url'),
+            this.settingValue('media::playback_url'),
         ]);
 
         const internal = internalValue || legacyValue;
@@ -194,6 +196,7 @@ export default class VideoServiceControl {
         try {
             new URL(internal);
             if (external) new URL(external);
+            if (playbackValue) new URL(playbackValue);
         } catch (err) {
             throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Media Service URL is not configured');
         }
@@ -202,6 +205,7 @@ export default class VideoServiceControl {
             configured: true,
             url: internal,
             publicUrl: external || undefined,
+            playbackUrl: playbackValue || undefined,
             token: jwt.sign({
                 internal: true,
                 access: AuthResourceAccess.MEDIA,
@@ -216,6 +220,28 @@ export default class VideoServiceControl {
         }
 
         return headers;
+    }
+
+    /**
+     * RTSP proxy sources are typically an EUD/plugin pushing to our public ingest
+     * MediaMTX by its public hostname (the client is off-host, so that's correct for
+     * them). But when *this* media container pulls that same source to relay it, a
+     * public-hostname target resolves back to this host's own public IP - which this
+     * environment's networking can't hairpin back in through, so the pull hangs forever.
+     * Same-host container-to-container, use the docker-internal ingest alias instead.
+     */
+    private ingestSource(proxy: string | null | undefined, publicHostname?: string): string | null | undefined {
+        if (!proxy || !publicHostname) return proxy;
+
+        try {
+            const url = new URL(proxy);
+            if (['rtsp:', 'rtsps:'].includes(url.protocol) && url.hostname === publicHostname) {
+                url.hostname = 'mediamtx';
+            }
+            return String(url);
+        } catch {
+            return proxy;
+        }
     }
 
     async configuration(): Promise<Static<typeof Configuration>> {
@@ -358,8 +384,15 @@ export default class VideoServiceControl {
 
         if (c.config && c.config.hls) {
             // Format: http://localhost:9997/mystream/index.m3u8 - Proxied
-            const url = new URL(`/stream/${lease.path}/index.m3u8`, c.external);
-            url.port = '9997';
+            // media::playback_url overrides the browser-facing host/port for HLS
+            // playback (e.g. a standard-port reverse proxy for networks that block
+            // the media server's dedicated port) while media::public_url continues
+            // to describe the media server's own address for everything else.
+            const video = await this.settings();
+            const url = video.playbackUrl
+                ? new URL(`/stream/${lease.path}/index.m3u8`, video.playbackUrl)
+                : new URL(`/stream/${lease.path}/index.m3u8`, c.external);
+            if (!video.playbackUrl) url.port = '9997';
 
             if (lease.stream_user && lease.read_user) {
                 if (populated === ProtocolPopulation.READ && lease.read_user && lease.read_pass) {
@@ -570,7 +603,7 @@ export default class VideoServiceControl {
                         safeUrlAllow: [new URL(video.url!).hostname],
                         body: JSON.stringify({
                             name: lease.path,
-                            source: lease.proxy,
+                            source: this.ingestSource(lease.proxy, video.publicUrl ? new URL(video.publicUrl).hostname : undefined),
                             record: lease.recording,
                         }),
                     });
@@ -765,7 +798,7 @@ export default class VideoServiceControl {
                 safeUrlAllow: [new URL(video.url!).hostname],
                 body: JSON.stringify({
                     name: lease.path,
-                    source: lease.proxy,
+                    source: this.ingestSource(lease.proxy, video.publicUrl ? new URL(video.publicUrl).hostname : undefined),
                     record: lease.recording,
                 }),
             });
@@ -785,7 +818,7 @@ export default class VideoServiceControl {
                     safeUrlAllow: [new URL(video.url!).hostname],
                     body: JSON.stringify({
                         name: lease.path,
-                        source: lease.proxy,
+                        source: this.ingestSource(lease.proxy, video.publicUrl ? new URL(video.publicUrl).hostname : undefined),
                         record: lease.recording,
                     }),
                 });
