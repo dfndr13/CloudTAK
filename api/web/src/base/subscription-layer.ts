@@ -50,19 +50,16 @@ async function updateLocalLayers(
 export default class SubscriptionLayer {
     parent: Subscription;
 
-    token: string;
     missiontoken?: string;
 
     constructor(
         parent: Subscription,
         opts: {
-            token: string,
             missiontoken?: string,
         }
     ) {
         this.parent = parent;
 
-        this.token = opts.token;
         this.missiontoken = opts.missiontoken;
     }
 
@@ -89,7 +86,7 @@ export default class SubscriptionLayer {
         const list = data as unknown as MissionLayerList;
 
         list.data.sort((a, b) => {
-            return a.name.localeCompare(b.name);
+            return (a.name ?? '').localeCompare(b.name ?? '');
         });
 
         await db.transaction('rw', db.subscription_layer, async () => {
@@ -130,7 +127,7 @@ export default class SubscriptionLayer {
 
         return layers
             .map((l) => l.layer)
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
     }
 
     /**

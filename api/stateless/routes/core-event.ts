@@ -1,23 +1,16 @@
 import { Type, Static } from '@sinclair/typebox';
-import { StandardResponse, CoreEventResponse, GeoJSONFeatureGeometryPoint } from '../../common/types.js';
+import { StandardResponse, CoreEventResponse, CoreEventLink, CoreEventStyle, GeoJSONFeatureGeometryPoint } from '../../common/types.js';
 import { sql, eq } from 'drizzle-orm';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth, { AuthUser, AuthResource, AuthResourceAccess } from '../../common/auth.js';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 import { CoreEvent, CoreEventChannel } from '../../common/schema.js';
 import { CoreEvent_Priority } from '../../common/enums.js';
 import type ConfigStateless from '../config.js';
-import activeChannels from '../lib/tak-channels.js';
+import { userChannels } from '../lib/tak-channels.js';
 import * as Default from '../lib/limits.js';
 
 export default async function router(schema: Schema, config: ConfigStateless) {
-    async function userChannels(email: string): Promise<Set<number>> {
-        const profile = await config.models.Profile.from(email);
-        const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(profile.auth.cert, profile.auth.key));
-        return await activeChannels(api);
-    }
-
     /**
      * Resolve the Connection a Connection or Layer resource token belongs to
      */
@@ -58,7 +51,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         if (auth instanceof AuthUser) {
             const shared = (event.channels || []).map(c => Number(c));
             if (shared.length) {
-                const active = await userChannels(auth.email);
+                const active = await userChannels(config, auth.email);
                 if (shared.some(c => active.has(c))) return;
             }
         }
@@ -79,6 +72,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 enum: Object.keys(CoreEvent),
             }),
             filter: Default.Filter,
+            channel: Type.Optional(Type.Union([
+                Type.Integer({ minimum: 0 }),
+                Type.Array(Type.Integer({ minimum: 0 })),
+            ], {
+                description: 'Only return Events shared with the given TAK Channel bitpos - can be provided multiple times to match any of the given Channels',
+            })),
         }),
         res: Type.Object({
             total: Type.Integer(),
@@ -93,6 +92,19 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 ],
             });
 
+            const filterChannels = req.query.channel === undefined
+                ? []
+                : Array.isArray(req.query.channel) ? req.query.channel : [req.query.channel];
+
+            const channel = filterChannels.length === 0
+                ? sql`True`
+                : sql`EXISTS (
+                    SELECT 1
+                    FROM core_event_channel
+                    WHERE core_event_channel.event = core_event.id
+                    AND core_event_channel.channel IN ${filterChannels}
+                )`;
+
             let where;
             if (auth instanceof AuthResource) {
                 const connection = await resourceConnection(auth);
@@ -100,12 +112,16 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 where = sql`
                     name ~* ${req.query.filter}
                     AND connection = ${connection}
+                    AND ${channel}
                 `;
             } else if (auth.is_admin()) {
-                where = sql`name ~* ${req.query.filter}`;
+                where = sql`
+                    name ~* ${req.query.filter}
+                    AND ${channel}
+                `;
             } else {
                 const user = auth;
-                const channels = [...await userChannels(user.email)];
+                const channels = [...await userChannels(config, user.email)];
 
                 where = channels.length
                     ? sql`
@@ -119,10 +135,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                                 AND core_event_channel.channel IN ${channels}
                             )
                         )
+                        AND ${channel}
                     `
                     : sql`
                         name ~* ${req.query.filter}
                         AND username = ${user.email}
+                        AND ${channel}
                     `;
             }
 
@@ -203,6 +221,18 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 default: true,
                 description: 'Can users other than the creator edit the Event',
             }),
+            metadata: Type.Record(Type.String(), Type.Unknown(), {
+                default: {},
+                description: 'User defined key/value Event metadata',
+            }),
+            links: Type.Array(CoreEventLink, {
+                default: [],
+                description: 'Named URLs associated with the Event',
+            }),
+            style: Type.Object(CoreEventStyle.properties, {
+                default: {},
+                description: 'Point styling for the Event',
+            }),
             channels: Type.Array(Type.Integer({ minimum: 0 }), {
                 uniqueItems: true,
                 default: [],
@@ -235,6 +265,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     })));
             }
 
+            // Best effort - a failed immediate submit is recovered by the
+            // Admin Connection's next scheduled submit cycle
+            config.hub.coreEventSubmit(event.id).catch((err) => {
+                console.error(`not ok - failed to immediately submit Core Event ${event.id}:`, err);
+            });
+
             res.json(await config.models.CoreEvent.augmented_from(event.id));
         } catch (err) {
             Err.respond(err, res);
@@ -253,15 +289,32 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         body: Type.Object({
             name: Type.Optional(Default.NameField),
             type: Type.Optional(Type.String()),
+            mission_guid: Type.Optional(Type.Union([Type.Null(), Type.String({
+                format: 'uuid',
+            })], {
+                description: 'GUID of a TAK Server Mission to associate with the Event - set to null to remove the association',
+            })),
             priority: Type.Optional(Type.Enum(CoreEvent_Priority)),
             geometry: Type.Optional(GeoJSONFeatureGeometryPoint),
             location: Type.Optional(Type.String()),
             remarks: Type.Optional(Type.String()),
+            active: Type.Optional(Type.Boolean({
+                description: 'Set to false to end the Event - the ended timestamp is set automatically',
+            })),
             ended: Type.Optional(Type.Union([Type.Null(), Type.String({
                 format: 'date-time',
             })])),
             external_id: Type.Optional(Type.String()),
             editable: Type.Optional(Type.Boolean()),
+            metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(), {
+                description: 'User defined key/value Event metadata - replaces the existing metadata object',
+            })),
+            links: Type.Optional(Type.Array(CoreEventLink, {
+                description: 'Named URLs associated with the Event - replaces the existing links array',
+            })),
+            style: Type.Optional(Type.Object(CoreEventStyle.properties, {
+                description: 'Point styling for the Event - replaces the existing style object',
+            })),
             channels: Type.Optional(Type.Array(Type.Integer({ minimum: 0 }), { uniqueItems: true })),
         }),
         res: CoreEventResponse,
@@ -297,8 +350,20 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             }
 
             if (Object.keys(body).length > 0) {
+                // An explicit ended in the body wins; an existing ended is
+                // preserved so re-ending doesn't move the original end time
+                let ended: typeof body.ended | ReturnType<typeof sql> = body.ended;
+                if (body.ended === undefined) {
+                    if (body.active === false && !event.ended) {
+                        ended = sql`Now()`;
+                    } else if (body.active === true) {
+                        ended = null;
+                    }
+                }
+
                 await config.models.CoreEvent.commit(req.params.event, {
                     ...body,
+                    ...(ended === undefined ? {} : { ended }),
                     updated: sql`Now()`,
                 });
             }
@@ -314,6 +379,14 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                             channel: BigInt(ch),
                         })));
                 }
+            }
+
+            if (Object.keys(body).length > 0 || channels !== undefined) {
+                // Best effort - a failed immediate submit is recovered by the
+                // next scheduled cycle; an ended Event ages out via stale
+                config.hub.coreEventSubmit(req.params.event).catch((err) => {
+                    console.error(`not ok - failed to immediately submit Core Event ${req.params.event}:`, err);
+                });
             }
 
             res.json(await config.models.CoreEvent.augmented_from(req.params.event));

@@ -429,6 +429,71 @@
         "query": false,
         "res": true
     },
+    "GET /board": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /board": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /board/column": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /board/column": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /board/column/:column": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /board/column/:column": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /board/event": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "PUT /board/event": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /board/event/:placement": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /board/event/:placement": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /board/:board": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /board/:board": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /board/:board": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /core/event": {
         "body": false,
         "query": true,
@@ -1444,6 +1509,16 @@
         "query": false,
         "res": true
     },
+    "GET /manifest.webmanifest": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /manifest.webmanifest/logos/:size": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
     "GET /type/cot": {
         "body": false,
         "query": true,
@@ -1464,15 +1539,50 @@
         "query": false,
         "res": true
     },
-    "GET /manifest.webmanifest": {
+    "GET /dispatcher/settings": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /manifest.webmanifest/logos/:size": {
+    "PUT /dispatcher/settings/:key": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/events": {
         "body": false,
         "query": false,
-        "res": false
+        "res": true
+    },
+    "POST /dispatcher/events": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/events/:eventid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /dispatcher/events/:eventid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/events/:eventid/incidents": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/events/:eventid/incidents": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/incidents/:incidentid": {
+        "body": true,
+        "query": false,
+        "res": true
     },
     "POST /replay/record/start": {
         "body": true,
@@ -1555,51 +1665,6 @@
         "res": true
     },
     "POST /replay/import": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/settings": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PUT /dispatcher/settings/:key": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/events": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /dispatcher/events": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PATCH /dispatcher/events/:eventid": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /dispatcher/events/:eventid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/events/:eventid/incidents": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /dispatcher/events/:eventid/incidents": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PATCH /dispatcher/incidents/:incidentid": {
         "body": true,
         "query": false,
         "res": true

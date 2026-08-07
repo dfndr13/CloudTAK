@@ -5,22 +5,49 @@
                 class='rounded py-2 px-2 text-truncate d-flex align-items-center user-select-none'
                 :class='background'
             >
-                <FeatureIcon
-                    :key='config.type'
-                    :feature='{ properties: { icon: headerIcon } }'
+                <TablerLoading
+                    v-if='typeLoading'
+                    :inline='true'
+                    desc='Loading Feature Type'
                 />
+                <template v-else-if='typeError'>
+                    <div
+                        class='mx-2 text-truncate'
+                        v-text='affiliationLabel'
+                    />
 
-                <div
-                    class='mx-2 text-truncate'
-                    v-text='meta ? meta.full : config.type'
-                />
+                    <span class='text-truncate'>Loading Feature Type Failed</span>
 
-                <span
-                    v-if='statusIsSet'
-                    :class='statusBadge'
-                    class='ms-auto me-1 text-truncate'
-                    v-text='status'
-                />
+                    <div class='ms-auto'>
+                        <TablerIconButton
+                            title='Retry'
+                            @click.stop='fetchType'
+                        >
+                            <IconRefresh
+                                :size='16'
+                                stroke='1'
+                            />
+                        </TablerIconButton>
+                    </div>
+                </template>
+                <template v-else>
+                    <FeatureIcon
+                        :key='config.type'
+                        :feature='{ properties: { type: config.type } }'
+                    />
+
+                    <div
+                        class='mx-2 text-truncate'
+                        v-text='meta ? meta.full : config.type'
+                    />
+
+                    <span
+                        v-if='statusIsSet'
+                        :class='statusBadge'
+                        class='ms-auto me-1 text-truncate'
+                        v-text='status'
+                    />
+                </template>
             </div>
         </template>
         <TablerSlidedown
@@ -39,22 +66,49 @@
                     class='rounded py-2 px-2 text-truncate d-flex align-items-center user-select-none'
                     :class='background'
                 >
-                    <FeatureIcon
-                        :key='config.type'
-                        :feature='{ properties: { icon: headerIcon } }'
+                    <TablerLoading
+                        v-if='typeLoading'
+                        :inline='true'
+                        desc='Loading Feature Type'
                     />
+                    <template v-else-if='typeError'>
+                        <div
+                            class='mx-2 text-truncate'
+                            v-text='affiliationLabel'
+                        />
 
-                    <div
-                        class='mx-2 text-truncate'
-                        v-text='meta ? meta.full : config.type'
-                    />
+                        <span class='text-truncate'>Loading Feature Type Failed</span>
 
-                    <span
-                        v-if='statusIsSet'
-                        :class='statusBadge'
-                        class='ms-auto me-1 text-truncate'
-                        v-text='status'
-                    />
+                        <div class='ms-auto'>
+                            <TablerIconButton
+                                title='Retry'
+                                @click.stop='fetchType'
+                            >
+                                <IconRefresh
+                                    :size='16'
+                                    stroke='1'
+                                />
+                            </TablerIconButton>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <FeatureIcon
+                            :key='config.type'
+                            :feature='{ properties: { type: config.type } }'
+                        />
+
+                        <div
+                            class='mx-2 text-truncate'
+                            v-text='meta ? meta.full : config.type'
+                        />
+
+                        <span
+                            v-if='statusIsSet'
+                            :class='statusBadge'
+                            class='ms-auto me-1 text-truncate'
+                            v-text='status'
+                        />
+                    </template>
                 </div>
             </div>
 
@@ -140,6 +194,24 @@
                         <TablerLoading
                             v-if='loading'
                         />
+                        <div
+                            v-else-if='listError'
+                            class='d-flex align-items-center px-2 py-2 user-select-none'
+                        >
+                            <span class='text-truncate'>Loading Feature Types Failed</span>
+
+                            <div class='ms-auto'>
+                                <TablerIconButton
+                                    title='Retry'
+                                    @click.stop='fetchList'
+                                >
+                                    <IconRefresh
+                                        :size='16'
+                                        stroke='1'
+                                    />
+                                </TablerIconButton>
+                            </div>
+                        </div>
                         <template v-else-if='standard === "2525B"'>
                             <TablerNone
                                 v-if='list.total === 0'
@@ -229,7 +301,7 @@
                                         >
                                             <FeatureIcon
                                                 :key='item.sidc'
-                                                :feature='{ properties: { icon: `2525E:${item.sidc}` } }'
+                                                :feature='{ properties: { type: item.sidc } }'
                                             />
 
                                             <div
@@ -270,7 +342,7 @@
                                         >
                                             <FeatureIcon
                                                 :key='item.sidc'
-                                                :feature='{ properties: { icon: `2525E:${item.sidc}` } }'
+                                                :feature='{ properties: { type: item.sidc } }'
                                             />
 
                                             <div
@@ -297,6 +369,7 @@ import type { COTType, COTTypeList, COT2525EList, COT2525EType } from '../../../
 import FeatureIcon from '../util/FeatureIcon.vue';
 import {
     IconFolder,
+    IconRefresh,
     IconChevronLeft,
     IconChevronRight,
     IconChartGridDots
@@ -356,6 +429,10 @@ if (config.value.type.startsWith('a-') && StandardAffiliationInverse[config.valu
 
 const loading = ref(true);
 
+const typeLoading = ref(false);
+const typeError = ref(false);
+const listError = ref(false);
+
 const paging = ref({
     filter: '',
 });
@@ -379,10 +456,8 @@ watch(availableStandards, () => {
     }
 });
 
-const headerIcon = computed<string>(() => {
-    return Type2525.isNumericSIDCConvertable(config.value.type)
-        ? `2525E:${config.value.type}`
-        : config.value.type;
+const affiliationLabel = computed<string>(() => {
+    return StandardAffiliationInverse[config.value.affiliation] || 'Unknown';
 });
 
 // 2525E Status/Operational Condition - digit index 6 of the numeric SIDC
@@ -555,38 +630,49 @@ async function updateAffiliation(affil: string) {
 }
 
 async function fetchType() {
-    if (Type2525.isNumericSIDCConvertable(config.value.type)) {
-        const { data, error } = await server.GET('/api/type/2525e/{:sidc}', {
-            params: {
-                path: {
-                    ':sidc': config.value.type
+    typeLoading.value = true;
+    typeError.value = false;
+
+    try {
+        if (Type2525.isNumericSIDCConvertable(config.value.type)) {
+            const { data, error } = await server.GET('/api/type/2525e/{:sidc}', {
+                params: {
+                    path: {
+                        ':sidc': config.value.type
+                    }
                 }
-            }
-        });
+            });
 
-        if (error) throw new Error(String(error));
+            if (error) throw new Error(String(error));
 
-        meta.value = {
-            cot: data.sidc,
-            full: data.name,
-            desc: data.remarks
-        };
-    } else {
-        const { data, error } = await server.GET('/api/type/cot/{:type}', {
-            params: {
-                path: {
-                    ':type': config.value.type
+            meta.value = {
+                cot: data.sidc,
+                full: data.name,
+                desc: data.remarks
+            };
+        } else {
+            const { data, error } = await server.GET('/api/type/cot/{:type}', {
+                params: {
+                    path: {
+                        ':type': config.value.type
+                    }
                 }
-            }
-        });
+            });
 
-        if (error) throw new Error(String(error));
-        meta.value = data;
+            if (error) throw new Error(String(error));
+            meta.value = data;
+        }
+    } catch (err) {
+        console.error('Failed to load Feature Type:', err);
+        typeError.value = true;
+    } finally {
+        typeLoading.value = false;
     }
 }
 
 async function fetchList() {
     loading.value = true;
+    listError.value = false;
 
     try {
         if (standard.value === '2525E') {
@@ -636,6 +722,12 @@ async function fetchList() {
             if (error) throw new Error(String(error));
             list.value = data;
         }
+    } catch (err) {
+        // Surfaced inline with a retry - a thrown error here escapes the
+        // watchers/onMounted as an unhandled rejection and pops the global
+        // error modal
+        console.error('Failed to load Feature Type List:', err);
+        listError.value = true;
     } finally {
         loading.value = false;
     }

@@ -3,6 +3,7 @@ import { primaryKey } from 'drizzle-orm/pg-core';
 import { Static } from '@sinclair/typebox';
 import type { ProfileVideoPosition } from './types.js';
 import type { StyleContainer } from './style.js';
+import { CoreEventLink, CoreEventStyle } from './types.js';
 import type { FilterContainer } from './filter.js';
 import type { PaletteFeatureStyle } from '../stateless/lib/palette.js';
 import { Polygon, Point } from 'geojson';
@@ -16,7 +17,7 @@ import {
     BasemapTerrain_Encoding,
     ProfilePaging_Type,
     Basemap_Type, Basemap_Format, Basemap_Scheme, VideoLease_SourceType, BasicGeometryType, Basemap_Protocol,
-    ProfileChatStatus, CoreEvent_Priority,
+    ProfileChatStatus, CoreEvent_Priority, CoreEventBoardColumn_Type,
 } from './enums.js';
 import { bigint, boolean, uuid, numeric, integer, doublePrecision, timestamp, pgTable, serial, varchar, text, unique, index } from 'drizzle-orm/pg-core';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
@@ -30,23 +31,12 @@ export const SpatialRefSys = pgTable('spatial_ref_sys', {
     proj4text: varchar({ length: 2048 }),
 });
 
-export const CoreIncident = pgTable('core_incident', {
-    id: serial().primaryKey(),
-    name: text().notNull(),
-    external_id: text(),
-    status: text().notNull().default('Active'),
-    description: text().notNull().default(''),
-    created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
-    updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
-    bounds: geometry({ type: GeometryType.Polygon, srid: 4326 }).$type<Polygon>(),
-    center: geometry({ type: GeometryType.Point, srid: 4326 }).$type<Point>(),
-    metadata: jsonb().notNull().default({}),
-});
-
 export const CoreEvent = pgTable('core_event', {
     id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+    mission_guid: uuid(),
     created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
     updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    active: boolean().notNull().default(true),
     ended: timestamp({ withTimezone: true, mode: 'string' }),
     username: text().references(() => Profile.username),
     connection: integer().references(() => Connection.id, { onDelete: 'set null' }),
@@ -57,6 +47,9 @@ export const CoreEvent = pgTable('core_event', {
     editable: boolean().notNull().default(true), // Can users other than the creator edit the Event
     location: text().notNull().default(''), // Human readable location - ie: an address
     remarks: text().notNull().default(''),
+    metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    links: jsonb().$type<Array<Static<typeof CoreEventLink>>>().notNull().default([]),
+    style: jsonb().$type<Static<typeof CoreEventStyle>>().notNull().default({}),
     geometry: geometry({ type: GeometryType.Point, srid: 4326 }).$type<Point>().notNull(),
 });
 
@@ -68,6 +61,60 @@ export const CoreEventChannel = pgTable('core_event_channel', {
         columns: [table.event, table.channel],
     }),
 }));
+
+/** A KanBan Board of Core Events - each Board belongs to a single TAK Channel */
+export const CoreEventBoard = pgTable('core_event_board', {
+    id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+    created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    channel: bigint({ mode: 'bigint' }).notNull(),
+    name: text().notNull(),
+    description: text().notNull().default(''),
+}, (table) => {
+    return {
+        channel_idx: index('core_event_board_channel_idx').on(table.channel),
+    };
+});
+
+/** KanBan style columns of a single Board */
+export const CoreEventBoardColumn = pgTable('core_event_board_column', {
+    id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+    created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    board: uuid().notNull().references(() => CoreEventBoard.id, { onDelete: 'cascade' }),
+    name: text().notNull(),
+    description: text().notNull().default(''),
+    color: text().notNull().default(''), // Hex colour the Column is rendered with - ie: #ff0000
+    type: text().$type<CoreEventBoardColumn_Type>().notNull().default(CoreEventBoardColumn_Type.CUSTOM),
+    position: integer().notNull().default(0),
+}, (table) => {
+    return {
+        board_idx: index('core_event_board_column_board_idx').on(table.board),
+    };
+});
+
+/** Placement of a Core Event in a Column - an Event can only sit in one Column per Board */
+export const CoreEventBoardEvent = pgTable('core_event_board_event', {
+    id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+    created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    board: uuid().notNull().references(() => CoreEventBoard.id, { onDelete: 'cascade' }),
+    column: uuid().notNull().references(() => CoreEventBoardColumn.id, { onDelete: 'cascade' }),
+    event: uuid().notNull().references(() => CoreEvent.id, { onDelete: 'cascade' }),
+    position: integer().notNull().default(0),
+}, table => ({
+    board_event_idx: unique().on(table.board, table.event),
+}));
+
+/** TAK Server Groups, periodically synced via the Admin Certificate */
+export const Channel = pgTable('channel', {
+    bitpos: integer().primaryKey(),
+    created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    name: text().notNull(),
+    type: text().notNull().default(''),
+    description: text().notNull().default(''),
+});
 
 export const PaletteFeature = pgTable('palette_feature', {
     uuid: uuid().primaryKey().default(sql`gen_random_uuid()`),

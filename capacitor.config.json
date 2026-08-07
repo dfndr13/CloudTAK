@@ -28,6 +28,10 @@
         "useLegacyBridge": true
     },
     "plugins": {
+        "StatusBar": {
+            "overlaysWebView": true,
+            "style": "DARK"
+        },
         "FirebaseMessaging": {
             "presentationOptions": [
                 "alert",
@@ -37,7 +41,7 @@
         },
         "CapacitorUpdater": {
             "appId": "io.cloudtak.app",
-            "version": "13.55.0",
+            "version": "13.62.0",
             "autoUpdate": "atBackground"
         }
     }

@@ -41,6 +41,24 @@
             class='d-flex flex-column h-100'
             style='min-height: 0;'
         >
+            <div
+                v-if='offlineEvent'
+                class='col-12 flex-shrink-0 px-2 pt-2'
+            >
+                <TablerInlineAlert
+                    severity='warning'
+                    title='Event Details Unavailable'
+                    description='This marker is a CloudTAK Event - the Event it was generated from can only be loaded while online.'
+                />
+                <TablerButton
+                    class='w-100'
+                    :disabled='retrying'
+                    @click='retryEvent'
+                >
+                    Retry
+                </TablerButton>
+            </div>
+
             <div class='col-12 border-bottom cloudtak-bg flex-shrink-0 d-flex align-items-center flex-nowrap gap-0 px-1 py-1'>
                 <div class='btn-list d-flex flex-nowrap align-items-center gap-0 mb-0'>
                     <IconStarFilled
@@ -428,6 +446,14 @@
                     </div>
 
                     <div
+                        v-for='guid of missionLinks'
+                        :key='guid'
+                        class='pt-2 col-12 px-2'
+                    >
+                        <PropertyMission :guid='guid' />
+                    </div>
+
+                    <div
                         class='pt-2'
                         :class='{
                             "col-md-8": center.length > 2,
@@ -468,7 +494,7 @@
 
                     <div
                         v-if='lineGeometry && terrainBasemapId'
-                        class='col-12 pt-2'
+                        class='col-12'
                     >
                         <PropertyProfile
                             :key='`${route.params.uid}-${terrainBasemapId}`'
@@ -534,10 +560,7 @@
                         />
                     </div>
 
-                    <div
-                        v-if='cot.properties.contact && cot.properties.contact.phone'
-                        class='pt-2'
-                    >
+                    <div v-if='cot.properties.contact && cot.properties.contact.phone'>
                         <PropertyPhone
                             :key='cot.properties.id'
                             :phone='cot.properties.contact.phone'
@@ -545,21 +568,17 @@
                     </div>
                 </div>
 
-                <div
+                <PropertyEmail
                     v-if='username'
-                    class='col-12 pt-2'
-                >
-                    <PropertyEmail
-                        :key='cot.properties.id'
-                        :email='username'
-                    />
-                </div>
+                    :key='cot.properties.id'
+                    :email='username'
+                />
 
 
 
                 <div
                     v-if='cot.properties.remarks !== undefined'
-                    class='col-12 pt-2'
+                    class='col-12'
                 >
                     <SlideDownHeader
                         v-model='remarksExpanded'
@@ -695,7 +714,6 @@
 
 <script setup lang='ts'>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { Preferences } from '@capacitor/preferences';
 import { useRoute, useRouter } from 'vue-router'
 import FeatureIcon from './util/FeatureIcon.vue';
 import BufferInput from './Inputs/BufferInput.vue';
@@ -707,10 +725,12 @@ import { OriginMode } from '../../base/cot.ts'
 import Subscription from '../../base/subscription.ts'
 import {
     TablerNone,
+    TablerButton,
     TablerDelete,
     TablerDropdown,
     TablerIconButton,
     TablerPillGroup,
+    TablerInlineAlert,
 } from '@tak-ps/vue-tabler';
 
 import CopyField from './util/CopyField.vue';
@@ -720,6 +740,7 @@ import PolygonArea from './util/PolygonArea.vue';
 import Coordinate from './util/Coordinate.vue';
 import PropertyProfile from './Property/PropertyProfile.vue';
 import PropertyType from './Property/PropertyType.vue';
+import PropertyMission from './Property/PropertyMission.vue';
 import Type2525 from '@tak-ps/node-cot/2525';
 
 function isSIDCType(type: string): boolean {
@@ -776,6 +797,7 @@ import Subscriptions from './util/Subscriptions.vue';
 import { server } from '../../std.ts';
 import { useMapStore } from '../../stores/map.ts';
 import { useFloatStore } from '../../stores/float.ts';
+import { useDeviceStore } from '../../stores/device.ts';
 import ProfileConfig from '../../base/profile.ts';
 import Config from '../../base/config.ts';
 import { setCircleRadius } from '../../base/cot/ellipse.ts';
@@ -783,6 +805,8 @@ import { setCircleRadius } from '../../base/cot/ellipse.ts';
 const mapStore = useMapStore();
 
 const floatStore = useFloatStore();
+
+const deviceStore = useDeviceStore();
 
 const terrainBasemapId = ref<number | null>(null);
 Config.list(['map::terrain'], { defaults: { 'map::terrain': null } }).then((cfg) => {
@@ -822,6 +846,11 @@ const remarksExpanded = ref(true);
 const bufferCotId = ref<string | null>(null);
 const actionIconSize = 28;
 
+// The Event a CoT is a projection of, when it couldn't be opened because
+// the device is offline
+const offlineEvent = ref<string | undefined>(undefined);
+const retrying = ref(false);
+
 const isNavigating = computed(() => {
     return mapStore.navigation.active
         && !!cot.value
@@ -844,8 +873,7 @@ const interval = ref<ReturnType<typeof setInterval> | undefined>();
 watch(cot, async () => {
     if (cot.value) {
         if (cot.value.origin.mode === OriginMode.MISSION && cot.value.origin.mode_id) {
-            const { value: token } = await Preferences.get({ key: 'token' });
-            subscription.value = await Subscription.from(cot.value.origin.mode_id, token || '');
+            subscription.value = await Subscription.from(cot.value.origin.mode_id);
         } else {
             subscription.value = undefined;
         }
@@ -855,6 +883,7 @@ watch(cot, async () => {
 watch(route, async () => {
     mode.value = 'default'
     breadcrumbLive.value = false;
+    offlineEvent.value = undefined;
     await load_cot();
     if (cot.value) {
         breadcrumbLive.value = await mapStore.worker.db.breadcrumb.get(cot.value.id);
@@ -923,6 +952,17 @@ const center = computed(() => {
     return arr;
 })
 
+// Unique GUIDs of the Missions the CoT's Links reference
+const missionLinks = computed<string[]>(() => {
+    if (!cot.value) return [];
+
+    return [...new Set(
+        (cot.value.properties.links || [])
+            .map((link) => link.mission)
+            .filter((mission): mission is string => !!mission)
+    )];
+});
+
 const lineGeometry = computed(() => {
     if (!cot.value || cot.value.geometry.type !== 'LineString') return null;
     return cot.value.geometry;
@@ -949,6 +989,23 @@ function toggleLock() {
     }
 }
 
+// load_cot redirects to the Event View if the network has come back
+async function retryEvent(): Promise<void> {
+    retrying.value = true;
+
+    try {
+        await load_cot();
+    } finally {
+        retrying.value = false;
+    }
+}
+
+// UUID of the Core Event a CoT is the projection of, carried on its `p` Link
+function coreEvent(cot: COT): string | undefined {
+    const marker = (cot.properties.links || []).find((link) => !!link.event);
+    return marker ? marker.event : undefined;
+}
+
 async function load_cot() {
     username.value = undefined;
 
@@ -957,11 +1014,21 @@ async function load_cot() {
     }))
 
     if (baseCOT && baseCOT.origin.mode === OriginMode.MISSION && baseCOT.origin.mode_id) {
-        const { value: token } = await Preferences.get({ key: 'token' });
-        subscription.value = await Subscription.from(baseCOT.origin.mode_id, token || '');
+        subscription.value = await Subscription.from(baseCOT.origin.mode_id);
     }
 
     if (baseCOT) {
+        // The Event View is the richer representation but is API-only -
+        // offline, the CoT remains the best available view of the Event
+        const event = coreEvent(baseCOT);
+        if (event && deviceStore.network.isOnline) {
+            // replace() so back navigation doesn't immediately redirect again
+            await router.replace(`/event/${event}`);
+            return;
+        }
+
+        offlineEvent.value = event;
+
         if (cot.value && cot.value._liveQuerySubscription) {
             cot.value._liveQuerySubscription.unsubscribe();
         }
@@ -1012,14 +1079,15 @@ function updatePropertyType(type: string): void {
 
     cot.value.properties.type = type;
 
-    if (isSIDC) {
-        cot.value.properties.icon = `2525E:${type}`;
-    } else if (cot.value.properties.icon && cot.value.properties.icon.startsWith('2525')) {
-        delete cot.value.properties.icon;
-    }
-
+    // An Iconset icon is the user's own pick and survives a type change - the
+    // type otherwise drives the icon, and a MIL-STD symbol needs none at all
+    // since renderedIcon derives its key from the type
     if (!cot.value.properties.icon || !cot.value.properties.icon.includes(':')) {
-        cot.value.properties.icon = type;
+        if (isSIDC) {
+            delete cot.value.properties.icon;
+        } else {
+            cot.value.properties.icon = type;
+        }
     }
 
     cot.value.update({});
@@ -1119,12 +1187,6 @@ async function deleteCOT() {
 </script>
 
 <style scoped>
-:global(html[data-bs-theme='dark'] .cot-view-properties .cloudtak-accent) {
-    background-color: #192f45 !important;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
 .grid-transition {
     display: grid;
     grid-template-rows: 0fr;

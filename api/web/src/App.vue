@@ -9,8 +9,8 @@
         <!-- New-version upgrade banner -->
         <div
             v-if='updateAvailable'
-            class='d-flex align-items-center justify-content-center flex-wrap gap-2 px-3 py-2'
-            style='background: rgba(20,20,20,0.88); backdrop-filter: blur(6px);'
+            class='d-flex align-items-center justify-content-center flex-wrap gap-2 px-3 pb-2'
+            style='background: rgba(20,20,20,0.88); backdrop-filter: blur(6px); padding-top: calc(0.5rem + var(--status-bar-height, 0px));'
         >
             <IconRefresh
                 size='16'
@@ -34,8 +34,8 @@
         <!-- Session expiry warning banner -->
         <div
             v-if='sessionWarningShown'
-            class='d-flex align-items-center justify-content-center flex-wrap gap-2 px-3 py-2'
-            style='background: rgba(20,20,20,0.88); backdrop-filter: blur(6px);'
+            class='d-flex align-items-center justify-content-center flex-wrap gap-2 px-3 pb-2'
+            style='background: rgba(20,20,20,0.88); backdrop-filter: blur(6px); padding-top: calc(0.5rem + var(--status-bar-height, 0px));'
         >
             <IconClock
                 size='16'
@@ -391,6 +391,10 @@ $cloudtak-blue: #07556D;
 
 :root {
     --cloudtak-light: rgba(var(--tblr-primary-rgb), 0.08);
+
+    /* Native status bar height overlaying the webview - 0 on web. The Android
+     * StatusBar plugin sets --status-bar-native-height as env() is unreliable there. */
+    --status-bar-height: max(env(safe-area-inset-top, 0px), var(--status-bar-native-height, 0px));
 }
 
 .cloudtak-gradient {
@@ -401,26 +405,65 @@ $cloudtak-blue: #07556D;
     background: radial-gradient(at left top, #f7fbff, #dde8f4);
 }
 
+/*
+ * Flat page surface shared by the standalone full-screen views (video wall,
+ * event board) so they all sit on the same background. Kept a shade below
+ * the `.cloudtak-panel` surface in each theme so panels layered on top of a page
+ * still read as raised.
+ */
+html[data-bs-theme='dark'] .cloudtak-page {
+    background: #000000;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+html[data-bs-theme='light'] .cloudtak-page {
+    background: var(--tblr-body-bg);
+    color: var(--tblr-body-color);
+}
+
+html[data-bs-theme='light'] .cloudtak-page .text-white:not(.badge):not(.btn):not([class*='bg-']) {
+    color: var(--tblr-body-color) !important;
+}
+
+html[data-bs-theme='light'] .cloudtak-page .text-white-50:not(.badge):not(.btn):not([class*='bg-']) {
+    color: var(--tblr-secondary-color) !important;
+}
+
 .btn-primary {
     background-color: $cloudtak-blue !important;
 }
 
 html[data-bs-theme='dark'] {
     --tabler-input-bg: var(--tblr-bg-forms, var(--tblr-bg-surface, var(--tblr-body-bg)));
+
+    /* Inset surfaces (`.cloudtak-accent`): blocks nested inside a panel, page or
+     * slide-down section. Translucent overlays rather than fixed colors, so they
+     * lift off whatever surface they're rendered over and stack predictably when
+     * nested. */
+    --cloudtak-inset-bg: rgba(255, 255, 255, 0.05);
+    --cloudtak-inset-border: rgba(255, 255, 255, 0.12);
+    --cloudtak-inset-hover-bg: rgba(255, 255, 255, 0.09);
+
+    /* Hover wash shared by `.cloudtak-hover`, `.cloudtak-hover-fill` and the
+     * slide-down section headers */
+    --cloudtak-hover-bg: color-mix(in srgb, var(--tblr-light) 12%, transparent);
+    --cloudtak-hover-border: color-mix(in srgb, var(--tblr-light) 30%, transparent);
 }
 
 html[data-bs-theme='light'] {
     --tabler-input-bg: var(--cloudtak-light);
+
+    --cloudtak-inset-bg: rgba(15, 23, 42, 0.04);
+    --cloudtak-inset-border: rgba(15, 23, 42, 0.1);
+    --cloudtak-inset-hover-bg: rgba(15, 23, 42, 0.07);
+
+    --cloudtak-hover-bg: color-mix(in srgb, var(--tblr-body-color) 8%, transparent);
+    --cloudtak-hover-border: color-mix(in srgb, var(--tblr-body-color) 18%, transparent);
 }
 
-html[data-bs-theme='dark'] .cloudtak-accent {
-    background-color: #192f45 !important;
-    border-color: rgba(255, 255, 255, 0.14) !important;
-    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
-}
-
-html[data-bs-theme='light'] .cloudtak-accent {
-    background-color: var(--tblr-primary-lt) !important;
+.cloudtak-accent {
+    background-color: var(--cloudtak-inset-bg) !important;
+    border-color: var(--cloudtak-inset-border) !important;
 }
 
 html[data-bs-theme='light'] .cloudtak-accent.text-white {
@@ -456,25 +499,31 @@ html[data-bs-theme='light'] .cloudtak-accent .text-white-50:not(.badge):not(.btn
 
 /*
  * Shared surface for panels floating above the map (navigation banner,
- * map controls, draggable floating panes). Sets --tblr-border-color so
+ * map controls, draggable floating panes, bottom panes). Sets --tblr-border-color so
  * Bootstrap border utilities inside the panel pick up the same subtle
- * separator color.
+ * separator color, and --tblr-card-box-shadow so panels built on a Tabler
+ * card get the panel shadow instead of the flat card one.
  */
 .cloudtak-panel {
+    --tblr-card-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
     border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--tblr-card-box-shadow);
 }
 
+/* Backgrounds mirror TablerDropdown's --tabler-dropdown-bg so floating panels
+ * read as the same surface as the notification dropdown. */
 html[data-bs-theme='dark'] .cloudtak-panel {
     --tblr-border-color: rgba(255, 255, 255, 0.14);
-    background-color: rgba(40, 53, 71, 0.95);
+    --cloudtak-panel-bg: rgba(20, 20, 25, 0.96);
+    background-color: var(--cloudtak-panel-bg);
     color: rgba(255, 255, 255, 0.92);
     border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 html[data-bs-theme='light'] .cloudtak-panel {
     --tblr-border-color: rgba(0, 0, 0, 0.12);
-    background-color: rgba(255, 255, 255, 0.95);
+    --cloudtak-panel-bg: rgba(255, 255, 255, 0.96);
+    background-color: var(--cloudtak-panel-bg);
     color: var(--tblr-body-color);
     border: 1px solid rgba(0, 0, 0, 0.12);
 }
@@ -492,32 +541,31 @@ html[data-bs-theme='light'] .cloudtak-panel .text-white-50:not(.badge):not(.btn)
     transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-html[data-bs-theme='dark'] .cloudtak-hover:hover,
-html[data-bs-theme='dark'] .cloudtak-hover:focus-visible,
-html[data-bs-theme='dark'] .cloudtak-hover:focus-within {
+.cloudtak-hover:hover,
+.cloudtak-hover:focus-visible,
+.cloudtak-hover:focus-within {
     border-radius: 6px;
-    border-color: color-mix(in srgb, var(--tblr-light) 30%, transparent);
-    background: color-mix(in srgb, var(--tblr-light) 12%, transparent);
+    border-color: var(--cloudtak-hover-border);
+    background: var(--cloudtak-hover-bg);
 }
 
-html[data-bs-theme='light'] .cloudtak-hover:hover,
-html[data-bs-theme='light'] .cloudtak-hover:focus-visible,
-html[data-bs-theme='light'] .cloudtak-hover:focus-within {
-    border-radius: 6px;
-    border-color: color-mix(in srgb, var(--tblr-body-color) 18%, transparent);
-    background: color-mix(in srgb, var(--tblr-body-color) 8%, transparent);
+/* Fill-only variant of `.cloudtak-hover` - same wash, no border or radius of its
+ * own - for rows that live inside an already bordered container and shouldn't
+ * turn into a second box on hover. */
+.cloudtak-hover-fill {
+    transition: background-color 0.15s ease;
 }
 
-html[data-bs-theme='dark'] .cloudtak-accent.cloudtak-hover:hover,
-html[data-bs-theme='dark'] .cloudtak-accent.cloudtak-hover:focus-visible,
-html[data-bs-theme='dark'] .cloudtak-accent.cloudtak-hover:focus-within {
-    background-color: color-mix(in srgb, #192f45 82%, white 18%) !important;
+.cloudtak-hover-fill:hover,
+.cloudtak-hover-fill:focus-visible,
+.cloudtak-hover-fill:focus-within {
+    background-color: var(--cloudtak-hover-bg) !important;
 }
 
-html[data-bs-theme='light'] .cloudtak-accent.cloudtak-hover:hover,
-html[data-bs-theme='light'] .cloudtak-accent.cloudtak-hover:focus-visible,
-html[data-bs-theme='light'] .cloudtak-accent.cloudtak-hover:focus-within {
-    background-color: color-mix(in srgb, var(--tblr-primary-lt) 82%, var(--tblr-body-color) 18%) !important;
+.cloudtak-accent.cloudtak-hover:hover,
+.cloudtak-accent.cloudtak-hover:focus-visible,
+.cloudtak-accent.cloudtak-hover:focus-within {
+    background-color: var(--cloudtak-inset-hover-bg) !important;
 }
 
 .cloudtak-hover-hidden {
