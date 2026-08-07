@@ -78,6 +78,16 @@
                                     />
                                     <span class='ps-2'>Video Wall</span>
                                 </div>
+                                <div
+                                    class='col-12 py-1 px-2 cloudtak-hover cursor-pointer user-select-none'
+                                    @click.stop='external("/board")'
+                                >
+                                    <IconLayoutKanban
+                                        :size='25'
+                                        stroke='1'
+                                    />
+                                    <span class='ps-2'>Event Board</span>
+                                </div>
                             </div>
                         </div>
                     </template>
@@ -218,7 +228,7 @@
 
         <template #footer>
             <div
-                class='main-menu-footer flex-shrink-0 cloudtak-bg border-top border-white'
+                class='main-menu-footer flex-shrink-0 cloudtak-bg border-top'
             >
                 <div
                     class='row g-0 align-items-center'
@@ -277,6 +287,7 @@ import {
     IconGridDots,
     IconWorld,
     IconDeviceTv,
+    IconLayoutKanban,
     IconLayoutGrid,
     IconLayoutList,
     IconPencil, 

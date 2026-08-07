@@ -42,11 +42,14 @@ import ProfileConfig from '../base/profile.ts';
 import Config from '../base/config.ts';
 import { isNativePlatform, addBackgroundStateListener, whenForegrounded } from '../base/capacitor.ts';
 import { withTimeout } from '../base/async.ts';
-import { recoverDatabase } from '../database.ts';
+import { db, recoverDatabase } from '../database.ts';
 
 import type { ProfileOverlay, Basemap, Feature } from '../types.ts';
 import type { LngLat, LngLatLike, Point, MapMouseEvent, MapTouchEvent, MapGeoJSONFeature, GeoJSONSource, LayerSpecification, PropertyValueSpecification } from 'maplibre-gl';
 import type { Position } from '@capacitor/geolocation';
+
+// Missions the dirty sweep has already warned about having no overlay
+const sweepWarned = new Set<string>();
 
 function waitForAtlasWorkerReady(worker: Worker): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -87,6 +90,7 @@ export const useMapStore = defineStore('cloudtak', {
 
         _removeOrientationListener?: () => Promise<void>;
         _resumeRecovery?: Promise<void>;
+        _cotResync?: Promise<void>;
         _removeBackgroundStateListener?: () => void;
         _removePushTokenListener?: () => void;
 
@@ -581,9 +585,49 @@ export const useMapStore = defineStore('cloudtak', {
          */
         refresh: async function(): Promise<void> {
             await this.updateCOT();
+            await this.sweepDirtyMissions();
+        },
+        /**
+         * Repaint dirty subscribed Missions whose Mission_Change_Feature
+         * render was lost or failed - loadMission clears the flag when it
+         * paints, so this only touches missions the event path missed
+         */
+        sweepDirtyMissions: async function(): Promise<void> {
+            const dirty = await Subscription.localList({
+                dirty: true,
+                subscribed: true
+            });
+
+            await Promise.allSettled([...dirty].map(async ({ guid }) => {
+                // Leave the flag set so the repaint happens if the overlay returns
+                if (!OverlayManager.loadedByMode('mission', guid)) {
+                    if (!sweepWarned.has(guid)) {
+                        sweepWarned.add(guid);
+                        console.warn(`Mission:${guid} has unrendered changes but no loaded overlay`);
+                    }
+                    return;
+                }
+
+                sweepWarned.delete(guid);
+
+                // Clear first so a write landing mid-render stays flagged
+                await db.subscription.update(guid, { dirty: false });
+                await this.renderMission(guid);
+            }));
         },
         updateCOT: async function(): Promise<void> {
             try {
+                // A resync replaces the source wholesale - a diff drained
+                // mid-resync would be silently lost to the setData behind it
+                if (this._cotResync) await this._cotResync;
+
+                // diff() drains the worker's pending queues even if we can't
+                // apply the result, so bail before computing it if there is
+                // no source to apply it to yet
+                if (!this._map) return;
+                const source = this._map.getSource('-1') as GeoJSONSource | undefined;
+                if (!source) return;
+
                 const diff = await this.worker.db.diff();
                 const addCount = diff.add?.length || 0;
                 const removeCount = diff.remove?.length || 0;
@@ -625,21 +669,6 @@ export const useMapStore = defineStore('cloudtak', {
                         sampleUpdateIds: updateIds.slice(0, 10)
                     };
 
-                    const source = this.map.getSource('-1') as GeoJSONSource | undefined;
-                    if (!source) {
-                        const signature = JSON.stringify({
-                            kind: 'missing-source',
-                            ...diffSummary
-                        });
-
-                        if (this.lastUpdateCOTErrorSignature !== signature) {
-                            this.lastUpdateCOTErrorSignature = signature;
-                            console.error('updateCOT could not find GeoJSON source', diffSummary);
-                        }
-
-                        return;
-                    }
-
                     if (
                         invalidRemoveIds.length
                         || invalidAddIds.length
@@ -655,6 +684,9 @@ export const useMapStore = defineStore('cloudtak', {
                             console.error('updateCOT generated an invalid GeoJSON diff', diffSummary);
                         }
 
+                        // The diff is already drained from the worker - a full
+                        // rebuild is the only way those features ever render
+                        await this.resyncCOT();
                         return;
                     }
 
@@ -673,6 +705,11 @@ export const useMapStore = defineStore('cloudtak', {
                                 error
                             });
                         }
+
+                        // The diff is already drained from the worker - a full
+                        // rebuild is the only way those features ever render
+                        await this.resyncCOT();
+                        return;
                     }
                 }
 
@@ -696,7 +733,55 @@ export const useMapStore = defineStore('cloudtak', {
                 console.error('updateCOT failed before source update', err);
             }
         },
+        /**
+         * Rebuild the CoT GeoJSON source wholesale from the worker's full
+         * feature state. Used on app resume and as recovery whenever an
+         * incremental diff was consumed from the worker but failed to apply -
+         * without this those features would never render again.
+         */
+        resyncCOT: async function(): Promise<void> {
+            if (this._cotResync) return this._cotResync;
 
+            this._cotResync = (async () => {
+                if (!this._map) return;
+                const source = this._map.getSource('-1') as GeoJSONSource | undefined;
+                if (!source) return;
+
+                const features = await this.worker.db.snapshot();
+
+                source.setData({
+                    type: 'FeatureCollection',
+                    features
+                });
+            })().finally(() => {
+                this._cotResync = undefined;
+            });
+
+            return this._cotResync;
+        },
+
+        /**
+         * Repaint a Mission overlay's source from locally stored features -
+         * no network or Active Mission side effects, safe for the dirty sweep
+         */
+        renderMission: async function(
+            guid: string,
+            sub?: Subscription
+        ): Promise<boolean> {
+            const overlay = OverlayManager.loadedByMode('mission', guid);
+            if (!overlay || !this.map) return false;
+
+            const oStore = this.map.getSource(String(overlay.id));
+            if (!oStore) return false;
+
+            const subscription = sub || await Subscription.from(guid, { subscribed: true });
+            if (!subscription) return false;
+
+            // @ts-expect-error Source.setData is not defined
+            oStore.setData(await subscription.feature.collection(false));
+
+            return true;
+        },
         /**
          * Given a mission Guid, attempt to refresh the Map Layer, loading the mission if it isn't already loaded
          * @returns {boolean} True if successful, false if not
@@ -714,21 +799,17 @@ export const useMapStore = defineStore('cloudtak', {
             }
 
             if (!this.map) throw new Error('Cannot loadMission before map has loaded');
-            const oStore = this.map.getSource(String(overlay.id));
 
-            if (!oStore) {
+            if (!this.map.getSource(String(overlay.id))) {
                 console.error(`Mission:${guid} No Source Found`);
                 return null
             }
 
-            const { value: token } = await Preferences.get({ key: 'token' });
-
-            let sub = (await Subscription.from(guid, token || '', { subscribed: true })) || null;
+            let sub = (await Subscription.from(guid, { subscribed: true })) || null;
 
             if (sub) {
                 // Get map data on the map ASAP, even if it is stale
-                // @ts-expect-error Source.setData is not defined
-                oStore.setData(await sub.feature.collection(false));
+                await this.renderMission(guid, sub);
 
                 if (overlay.active) {
                     await this.makeActiveMission(sub);
@@ -740,7 +821,6 @@ export const useMapStore = defineStore('cloudtak', {
             } else {
                 try {
                     sub = await Subscription.load(guid, {
-                        token: token || '',
                         reload: opts?.reload || false,
                         subscribed: true,
                         missiontoken: overlay.token || undefined
@@ -751,12 +831,10 @@ export const useMapStore = defineStore('cloudtak', {
                 }
             }
 
-            // @ts-expect-error Source.setData is not defined
-            oStore.setData(await sub.feature.collection(false));
+            // Clear first so a write racing this render stays flagged for the sweep
+            await db.subscription.update(guid, { dirty: false });
 
-            if (sub.dirty) {
-                await sub.update({ dirty: false });
-            }
+            await this.renderMission(guid, sub);
 
             return sub;
         },
@@ -782,13 +860,19 @@ export const useMapStore = defineStore('cloudtak', {
 
                     await withTimeout(this.worker.recover(), 10000, 'Worker database recovery');
 
-                    const isOpen = await withTimeout(this.worker.conn.isOpen, 5000, 'Worker connection probe');
-                    if (!isOpen) {
-                        console.log('App resumed with closed connection, reconnecting...');
-                        await this.worker.conn.reconnect(await this.worker.username);
-                    }
+                    // iOS suspension can kill the TCP connection without a
+                    // close event ever firing, so the worker's isOpen flag
+                    // cannot be trusted - always rebuild the socket
+                    await withTimeout(
+                        this.worker.conn.resume(await this.worker.username),
+                        10000,
+                        'WebSocket resume'
+                    );
 
-                    await this.updateCOT();
+                    // Diff state may have been consumed while suspended -
+                    // rebuild the source wholesale rather than trusting the
+                    // increments
+                    await this.resyncCOT();
                 } catch (err) {
                     console.error('Resume recovery failed:', err);
                 }
@@ -912,7 +996,10 @@ export const useMapStore = defineStore('cloudtak', {
                 } else if (msg.type === WorkerMessageType.Channel_Change) {
                     this.channelChange = true;
                 } else if (msg.type === WorkerMessageType.Mission_Change_Feature) {
-                    await this.loadMission(msg.body.guid);
+                    // A failed render stays dirty - the sweep repaints it
+                    await this.loadMission(msg.body.guid).catch((err: unknown) => {
+                        console.error(`Mission:${msg.body.guid} render failed after feature change:`, err);
+                    });
                 } else if (msg.type === WorkerMessageType.Sync_Update) {
                     const event = msg.body as { type: string; action: string; id?: string | number };
 

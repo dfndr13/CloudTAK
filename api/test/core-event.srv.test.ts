@@ -49,6 +49,18 @@ test('POST: api/core/event', async () => {
                     type: 'Point',
                     coordinates: [-105.2705, 40.015],
                 },
+                metadata: {
+                    source: 'test-suite',
+                },
+                links: [{
+                    name: 'Incident Report',
+                    url: 'https://example.com/incident/1234',
+                }],
+                style: {
+                    'icon': 'f7f71666-8b28-4b57-9fbb-e38e61d33b79/Public Safety/Fire.png',
+                    'marker-color': '#ff0000',
+                    'marker-opacity': 0.5,
+                },
                 channels: [7, 42],
             },
         }, true);
@@ -62,21 +74,36 @@ test('POST: api/core/event', async () => {
         delete res.body.updated;
 
         assert.deepEqual(res.body, {
+            mission_guid: null,
             username: 'admin@example.com',
             connection: null,
             priority: 'high',
             type: '10031000001213000000',
             name: 'Wildfire Report',
+            active: true,
             ended: null,
             external_id: '',
             editable: true,
             location: '1234 Main St, Boulder, CO',
             remarks: 'Fast moving fire North of Boulder',
+            metadata: {
+                source: 'test-suite',
+            },
+            links: [{
+                name: 'Incident Report',
+                url: 'https://example.com/incident/1234',
+            }],
+            style: {
+                'icon': 'f7f71666-8b28-4b57-9fbb-e38e61d33b79/Public Safety/Fire.png',
+                'marker-color': '#ff0000',
+                'marker-opacity': 0.5,
+            },
             geometry: {
                 type: 'Point',
                 coordinates: [-105.2705, 40.015],
             },
             channels: [7, 42],
+            boards: [],
         });
     } catch (err) {
         assert.ifError(err);
@@ -95,6 +122,74 @@ test('GET: api/core/event/:event', async () => {
         assert.equal(res.body.id, eventId);
         assert.equal(res.body.name, 'Wildfire Report');
         assert.deepEqual(res.body.channels, [7, 42]);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET: api/core/event - filter by shared channel', async () => {
+    try {
+        const res = await flight.fetch('/api/core/event?channel=7', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.equal(res.body.total, 1);
+        assert.equal(res.body.items[0].id, eventId);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET: api/core/event - filter by multiple channels matches any', async () => {
+    try {
+        const res = await flight.fetch('/api/core/event?channel=13&channel=7', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.equal(res.body.total, 1);
+        assert.equal(res.body.items[0].id, eventId);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET: api/core/event - filter by multiple unshared channels', async () => {
+    try {
+        const res = await flight.fetch('/api/core/event?channel=13&channel=99', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.deepEqual(res.body, {
+            total: 0,
+            items: [],
+        });
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET: api/core/event - filter by unshared channel', async () => {
+    try {
+        const res = await flight.fetch('/api/core/event?channel=13', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.deepEqual(res.body, {
+            total: 0,
+            items: [],
+        });
     } catch (err) {
         assert.ifError(err);
     }
@@ -216,6 +311,195 @@ test('PATCH: api/core/event/:event - creator can disable editing', async () => {
     }
 });
 
+test('PATCH: api/core/event/:event - update metadata', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                metadata: {
+                    source: 'test-suite',
+                    severity: 'extreme',
+                    acres: 500,
+                },
+            },
+        }, true);
+
+        assert.deepEqual(res.body.metadata, {
+            source: 'test-suite',
+            severity: 'extreme',
+            acres: 500,
+        });
+
+        const replaced = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                metadata: {},
+            },
+        }, true);
+
+        assert.deepEqual(replaced.body.metadata, {}, 'metadata object is replaced, not merged');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - update links & style', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                links: [{
+                    name: 'Incident Report',
+                    url: 'https://example.com/incident/1234',
+                }, {
+                    name: 'Evacuation Map',
+                    url: 'https://example.com/incident/1234/evac',
+                }],
+                // The shape the Event View submits - the icon picker and the
+                // opacity range both feed the style object
+                style: {
+                    'icon': '2525E:10031000001213000000',
+                    'marker-color': '#00ff00',
+                    'marker-opacity': 0.75,
+                },
+            },
+        }, true);
+
+        assert.deepEqual(res.body.links, [{
+            name: 'Incident Report',
+            url: 'https://example.com/incident/1234',
+        }, {
+            name: 'Evacuation Map',
+            url: 'https://example.com/incident/1234/evac',
+        }]);
+
+        assert.deepEqual(res.body.style, {
+            'icon': '2525E:10031000001213000000',
+            'marker-color': '#00ff00',
+            'marker-opacity': 0.75,
+        }, 'style object is replaced, not merged');
+
+        const cleared = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                links: [],
+                style: {},
+            },
+        }, true);
+
+        assert.deepEqual(cleared.body.links, []);
+        assert.deepEqual(cleared.body.style, {});
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - set and clear mission_guid', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                mission_guid: 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7',
+            },
+        }, true);
+
+        assert.equal(res.body.mission_guid, 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7');
+
+        const cleared = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                mission_guid: null,
+            },
+        }, true);
+
+        assert.equal(cleared.body.mission_guid, null);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - active true clears ended', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                active: true,
+            },
+        }, true);
+
+        assert.equal(res.body.active, true);
+        assert.equal(res.body.ended, null);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - active false sets ended', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                active: false,
+            },
+        }, true);
+
+        assert.equal(res.body.active, false);
+        assert.ok(res.body.ended, 'ended set automatically');
+
+        const again = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                active: false,
+                remarks: 'Still ended',
+            },
+        }, true);
+
+        assert.equal(again.body.ended, res.body.ended, 'existing ended preserved');
+
+        const explicit = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                active: false,
+                ended: '2026-07-20T12:00:00.000Z',
+            },
+        }, true);
+
+        assert.ok(String(explicit.body.ended).startsWith('2026-07-20'), 'explicit ended wins');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 test('PATCH: api/core/event/:event - clear channels', async () => {
     try {
         const res = await flight.fetch(`/api/core/event/${eventId}`, {
@@ -283,6 +567,8 @@ test('POST: api/core/event - connection token', async () => {
         assert.equal(res.body.connection, 1);
         assert.equal(res.body.name, 'Sensor Alert');
         assert.deepEqual(res.body.channels, [7]);
+        assert.deepEqual(res.body.links, [], 'links default to an empty array');
+        assert.deepEqual(res.body.style, {}, 'style defaults to an empty object');
     } catch (err) {
         assert.ifError(err);
     }

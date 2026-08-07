@@ -3,7 +3,7 @@ import { Type, Static } from '@sinclair/typebox';
 import * as schemas from './schema.js';
 import { TAKGroup, TAKRole } from '@tak-ps/node-tak/lib/api/types';
 import { Profile_Coordinate, Profile_Projection, Profile_Menu_Visibility, Profile_Zoom, Profile_Style, Profile_Stale, Profile_Distance, Profile_Elevation, Profile_Speed, Profile_Text, Profile_Radiation_Dose, Profile_Wake_Lock } from './enums.js';
-import { VideoLease_SourceType, CoreEvent_Priority } from './enums.js';
+import { VideoLease_SourceType, CoreEvent_Priority, CoreEventBoardColumn_Type } from './enums.js';
 import { AugmentedData } from './models/Data.js';
 import { AugmentedLayer, AugmentedLayerIncoming, AugmentedLayerOutgoing } from './models/Layer.js';
 import { Basemap_Format, Basemap_Protocol, Basemap_Scheme, Basemap_Type, BasemapTerrain_Encoding } from './enums.js';
@@ -143,10 +143,58 @@ export const PaletteFeatureResponse = createSelectSchema(schemas.PaletteFeature,
     uuid: Type.String(),
 });
 
+/** A named URL on a Core Event - submitted as a CoT `r-u` (refinement url) link */
+export const CoreEventLink = Type.Object({
+    name: Type.String({
+        description: 'Human readable name of the Link',
+    }),
+    url: Type.String({
+        description: 'URL the Link points at',
+        pattern: '^(https?:\\/\\/.+|)$',
+    }),
+});
+
+/** Point styling overrides - property names match node-cot's CoT GeoJSON representation */
+export const CoreEventStyle = Type.Object({
+    'icon': Type.Optional(Type.String({
+        description: 'Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path>',
+    })),
+    'marker-color': Type.Optional(Type.String({
+        description: 'Hex colour of the Event marker - ie: #00ff00',
+    })),
+    'marker-opacity': Type.Optional(Type.Number({
+        minimum: 0,
+        maximum: 1,
+        description: 'Opacity of the Event marker',
+    })),
+});
+
+/** Enough of a Column to render its name & badge styling inline */
+export const CoreEventBoardColumnSummary = Type.Object({
+    id: Type.String(),
+    name: Type.String(),
+    color: Type.String({ description: 'Hex colour the Column is rendered with - ie: #ff0000' }),
+    type: Type.Enum(CoreEventBoardColumn_Type),
+    position: Type.Integer(),
+});
+
+/** A Board of one of the Event's Channels & where the Event sits on it */
+export const CoreEventBoardSummary = Type.Object({
+    id: Type.String(),
+    name: Type.String(),
+    channel: Type.Integer({ description: 'TAK Server Channel bitpos the Board belongs to' }),
+    column: Type.Union([Type.Null(), Type.String()], {
+        description: 'Column of the Board the Event is placed in - null when the Event has not been nominated to this Board',
+    }),
+    columns: Type.Array(CoreEventBoardColumnSummary, { description: 'Columns of the Board' }),
+});
+
 export const CoreEventResponse = Type.Object({
     id: Type.String(),
+    mission_guid: Type.Union([Type.Null(), Type.String()], { description: 'GUID of the TAK Server Mission associated with the Event' }),
     created: Type.String(),
     updated: Type.String(),
+    active: Type.Boolean({ description: 'Is the Event currently active' }),
     ended: Type.Union([Type.Null(), Type.String()], { description: 'Time at which the Event ended' }),
     username: Type.Union([Type.Null(), Type.String()]),
     connection: Type.Union([Type.Null(), Type.Integer()], { description: 'Connection that created the Event if created by a Connection or Layer token' }),
@@ -157,8 +205,45 @@ export const CoreEventResponse = Type.Object({
     editable: Type.Boolean({ description: 'Can users other than the creator edit the Event' }),
     location: Type.String({ description: 'Human readable location - ie: an address' }),
     remarks: Type.String(),
+    metadata: Type.Record(Type.String(), Type.Unknown(), { description: 'User defined key/value Event metadata' }),
+    links: Type.Array(CoreEventLink, { description: 'Named URLs associated with the Event' }),
+    style: CoreEventStyle,
     geometry: GeoJSONFeatureGeometryPoint,
     channels: Type.Array(Type.Integer(), { description: 'TAK Server Channels the Event is shared with' }),
+    boards: Type.Array(CoreEventBoardSummary, {
+        description: 'Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each',
+    }),
+});
+
+export const CoreEventBoardResponse = Type.Object({
+    id: Type.String(),
+    created: Type.String(),
+    updated: Type.String(),
+    channel: Type.Integer({ description: 'TAK Server Channel bitpos the Board belongs to' }),
+    name: Type.String(),
+    description: Type.String(),
+});
+
+export const CoreEventBoardColumnResponse = Type.Object({
+    id: Type.String(),
+    created: Type.String(),
+    updated: Type.String(),
+    board: Type.String({ description: 'Board the Column belongs to' }),
+    name: Type.String(),
+    description: Type.String(),
+    color: Type.String({ description: 'Hex colour the Column is rendered with - ie: #ff0000' }),
+    type: Type.Enum(CoreEventBoardColumn_Type, { description: 'Columns of type nominated are created automatically and cannot be removed' }),
+    position: Type.Integer({ description: 'Horizontal position of the Column relative to the other Columns of the Board' }),
+});
+
+export const CoreEventBoardEventResponse = Type.Object({
+    id: Type.String(),
+    created: Type.String(),
+    updated: Type.String(),
+    board: Type.String({ description: 'Board the Event is placed on' }),
+    column: Type.String({ description: 'Column of the Board the Event is placed in' }),
+    position: Type.Integer({ description: 'Vertical position of the Event within the Column' }),
+    event: CoreEventResponse,
 });
 
 export const MissionTemplateResponse = Type.Object({
@@ -629,6 +714,11 @@ export const FullConfig = Type.Object({
         icon: Type.String({ description: 'Base64 encoded icon' }),
         url: Type.String({ description: 'Application URL' }),
     }), { description: 'External application links' }),
+    'core::event::types': Type.Array(Type.Object({
+        name: Type.String({ description: 'Preconfigured Event Type Name' }),
+        type: Type.String({ description: 'MIL-STD-2525E Symbol ID' }),
+        icon: Type.Optional(Type.String({ description: 'Base64 encoded custom icon' })),
+    }), { description: 'Preconfigured Core Event Types' }),
 });
 
 export type FullConfigType = Static<typeof FullConfig>;

@@ -16,6 +16,70 @@
 
 ### Pending Release
 
+### v13.62.0 - 2026-08-05
+
+- :tada: Introduce Event Board
+
+### v13.61.0 - 2026-08-04
+
+- :bug: Perform a full map re-render when app is foregrounded
+
+### v13.60.1 - 2026-08-04
+
+- :rocket: Sync Versions
+
+### v13.60.0 - 2026-08-04
+
+- :rocket: Consistent Menu Styling
+
+### v13.59.2 - 2026-08-03
+
+- :rocket: Consistent Menu Styling
+
+### v13.59.1 - 2026-08-02
+
+- :bug: Reintroduce schedule based Mission rendering checks as a fallback
+
+### v13.59.0 - 2026-08-02
+
+- :tada: Introduce Core Event data types
+
+### v13.58.0 - 2026-08-01
+
+- :rocket: Use the Admin Cert to sync upstream group/channel information into new Group/Channels
+
+### v13.57.4 - 2026-08-01
+
+- :arrow_up: Update all Capacitor Dependencies
+
+### v13.57.3 - 2026-07-31
+
+- :bug: Fix WebSocket Disconnection Bug
+
+### v13.57.2 - 2026-07-29
+
+- :bug: Replenish the `VideoPlayer` retry budget after sustained playback, so a long running Video Wall tile is no longer permanently retired by a few unrelated stream errors spread across a session
+
+### v13.57.1 - 2026-07-29
+
+- :arrow_up: Update DockerCompose MediaInfra image
+
+### v13.57.0 - 2026-07-28
+
+- :tada: Introduce Admin support for Core Events
+- :rocket: Remove unused `core_incident` table
+- :rocket: Fix bug where large number of feature insertions would cause postgres to reject insert by inserting in batches
+
+### v13.56.2 - 2026-07-27
+
+- :bug: Fix Mission Token handling in `Subscription.update` - tokens were written to the user JWT field instead of `missiontoken`, never persisted, and never propagated to the Log/Change/Contents/Feature/Layer sub-stores, causing persistent 401s on password-protected Data Syncs
+- :bug: Fix Active Mission hijacking feature filing - updates to features belonging to other subscribed missions were refiled (and re-published to the TAK Server if authored) into the Active Mission; the feature's own mission now takes precedence
+- :bug: Fix Mission file uploads sending the CloudTAK JWT as the `MissionAuthorization` header instead of the Mission Token, breaking uploads to protected missions
+
+### v13.56.1 - 2026-07-27
+
+- :bug: Fix Mission Contents schema for API
+
 ### v13.56.0 - 2026-07-25
 
 - :tada: Introduce Mission/Data-Sync layer editing
