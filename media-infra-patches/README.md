@@ -1,6 +1,6 @@
 # media-infra container patches
 
-`cloudtak-media-1` runs `ghcr.io/dfpc-coe/media-infra:v9.9.0` — a third-party image.
+`cloudtak-media-1` runs `ghcr.io/dfpc-coe/media-infra:v9.11.0` — a third-party image.
 There's no local source checkout for it in this repo, so two bugs found and fixed
 here on 2026-08-05 can't be fixed "properly" in source. Instead, `apply-patches.sh`
 patches the compiled files inside the container at every startup, before the app
@@ -12,8 +12,26 @@ live into the running container and vanished on the next `docker compose up`).
 [dfpc-coe/media-infra#57](https://github.com/dfpc-coe/media-infra/pull/57). Only the
 ephemeral-lease fix was accepted — it's merged to media-infra `main` as of `v9.11.0`.
 The hairpin-NAT fix was rejected by the maintainer; see bug #2 below for why it stays
-a permanent local patch rather than something upstream will ever absorb. Pinned
-`v9.9.0` predates both, so both patches here still apply and are both still needed.
+a permanent local patch rather than something upstream will ever absorb.
+
+**Verified against `v9.11.0` (2026-08-11):** `persist.js` in that image is
+byte-identical to `persist.js.patched` here — upstream's independently-written
+`ephemeral=all` fix happens to compile to the exact same output as ours, so
+`apply-patches.sh` logs `already patched, nothing to do` for it and leaves it alone.
+It's now permanently redundant (upstream ships the fix on its own) but harmless to
+leave in place — if a future version ever recompiles that line differently while
+still fixing the bug, the wrapper's byte-comparison will fail loudly rather than
+silently assume it's still fine, which is a useful tripwire to keep. `payload.js` at
+`v9.11.0` is still byte-identical to `payload.js.orig` (unpatched, as expected — see
+bug #2), so the hairpin patch applies exactly as before with no re-derivation needed.
+
+**`v9.10.0` HLS/fMP4 change:** that release pins `hlsVariant: fmp4` in the bundled
+`mediamtx.yml` (previously left at MediaMTX's default). We don't mount a custom
+`mediamtx.yml` in `docker-compose.yml`, so this takes effect as-is. Checked for
+breaking impact: our HLS player (`hls.js@^1.6.5` in `VideoPlayer.vue`) supports fMP4
+natively — fMP4 is in fact the more broadly-compatible of the two variants (mpegts
+only supports H264 video / MPEG-4 audio; fMP4 adds H265, Opus, etc per the v9.10.0
+changelog entry). No breaking behavior found for our setup.
 
 ## The two bugs
 
@@ -30,11 +48,11 @@ path it needed no longer existed by the time anyone tried to read it.
 Fix: query `ephemeral=all` instead of `ephemeral=false`, so ephemeral leases are
 included/excluded from the list by their own expiration, same as every other lease.
 
-*Upstream: merged as-is in `v9.11.0`. Once the pinned image here is bumped to
-`v9.11.0` or later, this half of the patch becomes unnecessary — `apply-patches.sh`
-will fail loudly (by design, see below) because the live `persist.js` will already
-match `ephemeral=all` and won't byte-match `persist.js.orig`. That failure means
-"drop this file from the pair," not "re-derive it."*
+*Upstream: merged as-is in `v9.11.0`, and — verified by diffing the actual shipped
+`v9.11.0` image — upstream's fix compiles byte-identical to `persist.js.patched`
+here. So as of `v9.11.0` this half of the patch is redundant (upstream already ships
+it) but not broken: `apply-patches.sh` sees the live file already matches `.patched`
+and no-ops. Safe to leave in place; only worth pruning for tidiness, not correctness.*
 
 **2. `payload.js` — RTSP proxy source uses the public hostname, hairpin-NAT hangs the pull**
 
@@ -95,8 +113,12 @@ silently wrong patch). To fix:
 1. `docker run --rm --entrypoint cat ghcr.io/dfpc-coe/media-infra:<new-version> /dist/lib/persist.js` (and `payload.js`) to get the new version's actual content.
 2. Diff it against `persist.js.orig` / `payload.js.orig` here to see what upstream changed.
 3. For `persist.js`: if the new version is `v9.11.0` or later, upstream already
-   includes the `ephemeral=all` fix — drop `persist.js.orig`/`persist.js.patched` and
-   the `persist.js` line from `apply-patches.sh` entirely rather than re-deriving it.
+   includes the `ephemeral=all` fix. Check whether the live file still matches
+   `persist.js.patched` (it did as of `v9.11.0`) — if so, no action needed, the
+   wrapper no-ops on it. Only if a future version changes that file's compiled output
+   again (and `apply-patches.sh` starts failing loudly on it) does it need attention:
+   at that point just drop `persist.js.orig`/`persist.js.patched` and the `persist.js`
+   line from `apply-patches.sh`, since upstream owns this fix now.
 4. For `payload.js`: re-derive the patch by hand against the new content — re-apply
    the same intent (rewrite RTSP sources pointing at the public media hostname to the
    internal `mediamtx` alias) against whatever the new code actually looks like. This

@@ -85,7 +85,7 @@ services:
             RETENTION_SCHEDULE: ${RETENTION_SCHEDULE:-0 3 * * *}
 
     media:
-        image: ghcr.io/dfpc-coe/media-infra:v9.9.0
+        image: ghcr.io/dfpc-coe/media-infra:v9.11.0
         restart: 'always'
         # media-infra is a third-party image with two known bugs affecting video
         # playback (see media-infra-patches/README.md). This entrypoint reapplies
