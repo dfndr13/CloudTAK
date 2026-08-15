@@ -1,13 +1,13 @@
 import { db, ChatStatus } from '../database.ts';
 import Filter from './filter.ts';
-import COT from './cot.ts';
+import COT, { renderedIcon } from './cot.ts';
 import Subscription from './subscription.ts';
 import type Atlas from '../workers/atlas.ts';
 import { server } from '../std.ts';
 import { bbox } from '@turf/bbox';
 import type { BBox, FeatureCollection as GeoJSONFeatureCollection } from 'geojson'
 import type { Feature, FeatureCollection } from '../types.ts';
-import { WorkerMessageType } from './events.ts';
+import { WorkerMessageType } from '../utils/events.ts';
 
 /**
  * High Level Wrapper around the Data/Mission Sync API
@@ -169,11 +169,14 @@ export default class SubscriptionFeature {
                 }
 
                 if (!blocked) {
+                    const icon = renderedIcon(feat.properties);
+
                     filtered.push({
                         ...feat,
                         properties: {
                             ...feat.properties,
                             path: feat.path || '/',
+                            ...(icon !== undefined ? { icon } : {})
                         }
                     });
                 }

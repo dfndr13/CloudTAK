@@ -101,10 +101,10 @@
             />
             <div
                 v-if='mapStore.selected.size'
-                class='position-absolute begin-0 text-white cloudtak-bg'
+                class='position-absolute'
                 style='
-                    bottom: var(--map-bottom-bar-size, 50px);
-                    width: 250px;
+                    bottom: calc(var(--map-bottom-bar-size, 50px) + 8px);
+                    left: 8px;
                 '
             >
                 <SelectFeats :selected='mapStore.selected' />
@@ -490,8 +490,8 @@ import {
     TablerDropdown,
     TablerModal,
 } from '@tak-ps/vue-tabler';
-import { LocationState, WorkerMessageType } from '../../base/events.ts';
-import type { WorkerMessage } from '../../base/events.ts';
+import { LocationState, WorkerMessageType } from '../../utils/events.ts';
+import type { WorkerMessage } from '../../utils/events.ts';
 import TAKNotification, { NotificationType } from '../../base/notification.ts';
 import { v4 as randomUUID } from 'uuid';
 import { lineString as turfLineString, point as turfPoint } from '@turf/helpers';
@@ -511,7 +511,7 @@ import { stdurl } from '../../std.ts';
 import ProfileConfig from '../../base/profile.ts';
 import Config from '../../base/config.ts';
 import { cutOverlayFeature } from './util/featureCut.ts';
-import { isNativePlatform, isIOSPlatform, addBackgroundStateListener } from '../../base/capacitor.ts';
+import { isNativePlatform, isIOSPlatform, addBackgroundStateListener } from '../../utils/capacitor.ts';
 import { copyFeatureToClipboard, readFeatureFromClipboard } from '../../stores/device/clipboard.ts';
 import MissionInviteModal from './Menu/Mission/MissionInviteModal.vue';
 
@@ -1066,22 +1066,12 @@ async function handleRadial(event: string): Promise<void> {
     animation: alert-pulse 1.2s ease-in-out infinite;
 }
 
-.cloudtak-navigating {
-    z-index: 2;
-    width: min(640px, calc(100vw - 16px));
-    border-radius: 0px 0px 8px 8px;
-}
-
 /*
- * On small screens the banner would overlap the top controls (Active Mission, tools and menu);
- * drop it below them so they stay usable and round all four corners.
+ * Drops the left controls below the navigation banner once it wraps to its own
+ * row on small screens - `.cloudtak-navigating` itself is styled in style.scss
+ * because it is rendered by `Navigating.vue`.
  */
 @media (max-width: 767.98px) {
-    .cloudtak-navigating {
-        margin-top: 74px;
-        border-radius: 8px;
-    }
-
     .cloudtak-left-controls--nav {
         top: 134px !important;
     }

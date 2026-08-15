@@ -22,7 +22,6 @@ export const LayerUpdateManagementItemResponse = Type.Object({
     latest_version: Type.Union([Type.Null(), Type.String()]),
     has_update: Type.Boolean(),
     has_stack: Type.Boolean(),
-    template: Type.Boolean(),
     connection: Type.Union([Type.Null(), Type.Integer()]),
     parent_name: Type.Union([Type.Null(), Type.String()]),
 });
@@ -244,6 +243,28 @@ export const CoreEventBoardEventResponse = Type.Object({
     column: Type.String({ description: 'Column of the Board the Event is placed in' }),
     position: Type.Integer({ description: 'Vertical position of the Event within the Column' }),
     event: CoreEventResponse,
+});
+
+export const CoreDeviceResponse = Type.Object({
+    id: Type.String(),
+    created: Type.String(),
+    updated: Type.String(),
+    username: Type.Union([Type.Null(), Type.String()]),
+    connection: Type.Union([Type.Null(), Type.Integer()], { description: 'Connection that created the Device if created by a Connection or Layer token' }),
+    event: Type.Union([Type.Null(), Type.String()], { description: 'Core Event the Device is currently assigned to' }),
+    type: Type.String({ description: 'MIL-STD-2525E Symbol ID' }),
+    name: Type.String({ description: 'Human readable name/callsign of the Device' }),
+    manufacturer: Type.String({ description: 'Manufacturer of the Device - ie: Ortec, Nucsafe, DJI' }),
+    model: Type.String({ description: 'Model of the Device - ie: Micro Detective, IdentiFINDER 2' }),
+    serial: Type.String({ description: 'Manufacturer assigned Serial Number' }),
+    firmware: Type.String({ description: 'Firmware/Software revision reported by the Device' }),
+    status: Type.String({ description: 'General Device health status - ie: Full, Reduced, Unknown' }),
+    battery: Type.Union([Type.Null(), Type.Number()], { description: 'Battery level as a percentage (0-100) at last report' }),
+    simulated: Type.Boolean({ description: 'Is the Device a simulated data source' }),
+    external_id: Type.String({ description: 'ID of the Device in an external system' }),
+    remarks: Type.String(),
+    metadata: Type.Record(Type.String(), Type.Unknown(), { description: 'User defined key/value Device metadata' }),
+    channels: Type.Array(Type.Integer(), { description: 'TAK Server Channels the Device is shared with' }),
 });
 
 export const MissionTemplateResponse = Type.Object({

@@ -95,7 +95,8 @@
                         <FeatureRow
                             v-for='feat of currentItems'
                             :key='feat.id'
-                            :delete-button='false'
+                            :delete-button='writable'
+                            :info-button='true'
                             :grip-handle='writable'
                             :visibility-toggle='true'
                             :feature='feat'
@@ -127,8 +128,8 @@ import type {
     Feature,
     MissionLayer
 } from '../../../../types.ts';
-import type { PathNode } from '../../../../base/path-manager.ts';
-import PathManager from '../../../../base/path-manager.ts';
+import type { PathNode } from '../../../../utils/path-manager.ts';
+import PathManager from '../../../../utils/path-manager.ts';
 import { FeatureVisibility } from '../../../../stores/modules/feature-visibility.ts';
 import Subscription from '../../../../base/subscription.ts';
 import MenuTemplate from '../../util/MenuTemplate.vue';

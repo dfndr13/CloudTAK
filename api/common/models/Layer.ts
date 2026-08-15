@@ -43,7 +43,6 @@ export const AugmentedLayer = Type.Object({
     status: Type.Optional(Type.String()),
     created: Type.String(),
     updated: Type.String(),
-    template: Type.Boolean(),
     connection: Type.Union([Type.Null(), Type.Integer()]),
     username: Type.Union([Type.Null(), Type.String()]),
     uuid: Type.String(),
@@ -56,6 +55,12 @@ export const AugmentedLayer = Type.Object({
     memory: Type.Integer(),
     timeout: Type.Integer(),
     priority: Type.Enum(Layer_Priority),
+    permissions: Type.Union([Type.Null(), Type.Array(Type.String())]),
+
+    /** @deprecated Layer Templates were removed - always false, retained for ETL Task compatibility */
+    template: Type.Boolean({
+        description: 'Deprecated: Layer Templates have been removed - this value is always false',
+    }),
 
     alarm_period: Type.Integer(),
     alarm_evals: Type.Integer(),
@@ -97,7 +102,16 @@ export default class LayerModel extends Modeler<typeof Layer> {
         }
     }
 
-    parse(l: Static<typeof AugmentedLayer>): Static<typeof AugmentedLayer> {
+    parse(input: Omit<Static<typeof AugmentedLayer>, 'template'>): Static<typeof AugmentedLayer> {
+        const l = input as Static<typeof AugmentedLayer>;
+
+        // Layer Templates have been removed but ETL Tasks still require the key to be present
+        l.template = false;
+
+        if (!l.parent || !l.parent.id) {
+            delete l.parent;
+        }
+
         if (l.incoming && l.incoming.layer) {
             if (typeof l.incoming.config === 'string') l.incoming.config = JSON.parse(l.incoming.config);
             if (typeof l.incoming.styles === 'string') l.incoming.styles = JSON.parse(l.incoming.styles);
@@ -154,10 +168,10 @@ export default class LayerModel extends Modeler<typeof Layer> {
                 protected: Layer.protected,
                 logging: Layer.logging,
                 task: Layer.task,
-                template: Layer.template,
                 connection: Layer.connection,
                 memory: Layer.memory,
                 timeout: Layer.timeout,
+                permissions: Layer.permissions,
 
                 alarm_period: Layer.alarm_period,
                 alarm_evals: Layer.alarm_evals,
@@ -201,7 +215,7 @@ export default class LayerModel extends Modeler<typeof Layer> {
 
         if (pgres.length !== 1) throw new Err(404, null, `Item Not Found`);
 
-        return this.parse(pgres[0] as Static<typeof AugmentedLayer>);
+        return this.parse(pgres[0] as Omit<Static<typeof AugmentedLayer>, 'template'>);
     }
 
     async augmented_count(query: GenericCountInput = {}): Promise<number> {
@@ -236,10 +250,10 @@ export default class LayerModel extends Modeler<typeof Layer> {
                 protected: Layer.protected,
                 logging: Layer.logging,
                 task: Layer.task,
-                template: Layer.template,
                 connection: Layer.connection,
                 memory: Layer.memory,
                 timeout: Layer.timeout,
+                permissions: Layer.permissions,
 
                 alarm_period: Layer.alarm_period,
                 alarm_evals: Layer.alarm_evals,
@@ -289,7 +303,7 @@ export default class LayerModel extends Modeler<typeof Layer> {
             return {
                 total: parseInt(pgres[0].count),
                 items: pgres.map((t) => {
-                    return this.parse(t as Static<typeof AugmentedLayer>);
+                    return this.parse(t as Omit<Static<typeof AugmentedLayer>, 'template'>);
                 }),
             };
         }

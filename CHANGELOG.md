@@ -13,8 +13,86 @@
 ### Deprecation Notices
 
 - `GET /api/search/reverse/:long/:lat` endpoint is deprecated and will be removed in v14, use `GET /api/search/reverse/:long/:lat/<type>` instead
+- `Layer.template` is deprecated and will be removed
 
 ### Pending Release
+
+### v13.69.0 - 2026-08-15
+
+- :tada: Allow specifying a feature as a line vs a route on ETL layers - Closes: https://github.com/dfpc-coe/CloudTAK/issues/1666
+
+### v13.68.2 - 2026-08-14
+
+- :bug: Ensure connection permissions are checked when accessing mari endpoints with `?connectmartiion` param
+- :bug: Ensure deleted Profile API Tokens can't be used after deletion
+
+### v13.68.1 - 2026-08-13
+
+- :bug: Lock layer.template to false
+
+### v13.68.0 - 2026-08-13
+
+- :tada: Add shared `ScheduleInput` component with Rate/Cron modes, presets, live human-readable descriptions & inline validation - used by Layer Creation & Layer Incoming Config in place of free-text cron inputs
+- :rocket: Merge the Layer Creation capabilities form into the `LayerStaticCapabilities` component behind a `disabled` prop - Layer Creation & the Admin Integrations version view now share one component
+- :bug: Layer Incoming Config no longer seeds a bare cron expression (`0/15 * * * ? *`) that the API's schedule validation rejects - toggling Scheduled Runs on now seeds `rate(5 minutes)`
+- :bug: Fix render error in the Multiple Feature Map Popup when clicking overlapping KML/imported overlay features - icon derivation no longer assumes a CoT `type` property is present
+- :tada: Layer Creation UI now surfaces the Task Capabilities document, allowing Compute, Permissions, Schedule, Webhook & Outgoing settings to be applied at creation time
+- :tada: `POST /connection/:connectionid/layer` now accepts optional `incoming` & `outgoing` config so the initial deploy includes them
+- :tada: Admin Layers can now be created directly via `POST /connection/0/layer` & the `/connection/0/layer/new` UI
+- :rocket: Remove the ETL Layer Template concept from the UI & API - `GET/POST /api/template` endpoints, the `layers.template` column & Templated Creation UI are removed
+- :white_check_mark: Add Layer creation tests covering incoming/outgoing config, invalid cron rejection & Admin Layer creation
+
+### v13.67.2 - 2026-08-12
+
+- :rocket: Cleanup Web Base Interfaces
+
+### v13.67.1 - 2026-08-11
+
+- :bug: Introduce per-feature parsing when calling Mission Layers API to avoid a single malformed feature from preventing the entire layer from being returned
+
+### v13.67.0 - 2026-08-11
+
+- :tada: Introduce basic PlayWright tests
+- :tada: Introduce Permissions storage on layer table
+- :rocket: Consistent `6px` border radius on UI components
+- :rocket: Update MultiSelect component to use new floating pane style
+
+### v13.66.1 - 2026-08-10
+
+- :bug: Fix 2525E display in Data Sync Missions
+- :rocket: Allow deleting features from the Mission Layers Menu
+- :rocket: Allow viewing info from the Mission Layers Menu
+
+### v13.66.0 - 2026-08-10
+
+- :tada: Allow ECR layers to register a static capabilites document as part of the OCI manifest
+
+### v13.65.3 - 2026-08-10
+
+- :bug: Avoid duplicate location watcher to prevent overheating on mobile devices
+
+### v13.65.2 - 2026-08-10
+
+- :bug: Ensure a single poisoned icon can't break server launch - Closes: https://github.com/dfpc-coe/CloudTAK/issues/1623
+- :bug: Fix underlying non-conformant PNG files in CloudTAK-Data
+
+### v13.65.1 - 2026-08-09
+
+- :bug: Ensure style properties aren't submitted for self CoT - Closes: https://github.com/dfpc-coe/CloudTAK/issues/1643
+- :Rocket: Migrate to FMP4 & surface error messages - Closes: https://github.com/dfpc-coe/CloudTAK/issues/1641
+
+### v13.65.0 - 2026-08-09
+
+- :tada: Introduce spreadsheet view in Event Board
+
+### v13.64.0 - 2026-08-09
+
+- :rocket: Introduce concept of constrained network environments via CapAwesome plugin
+
+### v13.63.0 - 2026-08-07
+
+- :tada: Introduce concept of CoreDevice to augment CoreEvent data structure 
+- :bug: Fix feature display with use of `maxzoom` limitation - Closes: https://github.com/dfpc-coe/CloudTAK/issues/1642
 
 ### v13.62.0 - 2026-08-05
 

@@ -56,110 +56,6 @@
                 @click='sessionWarningDismissed = true'
             />
         </div>
-        <header
-            v-if='navShown'
-            class='navbar navbar-expand-md d-print-none'
-        >
-            <div class='container-xl'>
-                <div class='col-auto'>
-                    <img
-                        alt='Agency Logo'
-                        :src='appStore.loginLogo || "/CloudTAKLogo.svg"'
-                        class='cursor-pointer'
-                        draggable='false'
-                        height='50'
-                        width='50'
-                        @click='external("/")'
-                    >
-                </div>
-                <div class='col mx-2'>
-                    <div
-                        class='page-pretitle'
-                        v-text='appStore.loginName || ""'
-                    />
-                    <h2 class='page-title'>
-                        CloudTAK
-                    </h2>
-                </div>
-
-                <div
-                    v-if='appStore.user'
-                    class='ms-auto'
-                >
-                    <div class='btn-list'>
-                        <a
-                            class='btn btn-dark'
-                            target='_blank'
-                            rel='noreferrer'
-                            @click='external("/docs")'
-                        >
-                            <IconCode
-                                size='32'
-                                stroke='1'
-                            />Docs
-                        </a>
-                        <div class='dropdown'>
-                            <div
-                                id='userProfileButton'
-                                type='button'
-                                data-bs-toggle='dropdown'
-                                aria-expanded='false'
-                                class='btn btn-dark'
-                            >
-                                <IconUser
-                                    size='32'
-                                    stroke='1'
-                                />
-                            </div>
-                            <ul
-                                class='dropdown-menu'
-                                aria-labelledby='userProfileButton'
-                            >
-                                <div
-                                    class='d-flex dropdown-item cursor-pointer cloudtak-hover'
-                                    @click='external("/connection")'
-                                >
-                                    <IconNetwork
-                                        size='32'
-                                        stroke='1'
-                                    />
-                                    <span class='mx-2'>Connections</span>
-                                </div>
-                                <div
-                                    class='d-flex dropdown-item cursor-pointer cloudtak-hover'
-                                    @click='external("/admin")'
-                                >
-                                    <IconSettings
-                                        size='32'
-                                        stroke='1'
-                                    />
-                                    <span class='mx-2'>Admin</span>
-                                    <TablerBadge
-                                        class='ms-auto'
-                                        background-color='rgba(239, 68, 68, 0.2)'
-                                        border-color='rgba(239, 68, 68, 0.5)'
-                                        text-color='#dc2626'
-                                    >
-                                        Admin
-                                    </TablerBadge>
-                                </div>
-                                <div
-                                    class='d-flex dropdown-item cursor-pointer cloudtak-hover'
-                                    @click='appStore.logout'
-                                >
-                                    <IconLogout
-                                        size='32'
-                                        stroke='1'
-                                    />
-                                    <span class='mx-2'>Logout</span>
-                                </div>
-                            </ul>
-                        </div>
-                        <div />
-                    </div>
-                </div>
-            </div>
-        </header>
 
         <Loading
             v-if='!mounted || (appStore.loading && !route.path.includes("configure") && !route.path.includes("login"))'
@@ -193,30 +89,25 @@ import { ref, computed, onErrorCaptured, onMounted, onUnmounted } from 'vue'
 import { liveQuery } from 'dexie';
 import { isTransientDbError } from './database.ts';
 import { useRoute, useRouter } from 'vue-router';
+// Tabler's stylesheet is loaded from src/style.scss via the <head> of each
+// HTML entry point - only its JS behaviours are pulled in here.
 import '@tabler/core/dist/js/tabler.min.js';
-import '@tabler/core/dist/css/tabler.min.css';
 import {
     IconClock,
-    IconCode,
-    IconLogout,
-    IconUser,
-    IconNetwork,
-    IconSettings,
     IconRefresh,
 } from '@tabler/icons-vue';
 import Loading from './components/Loading.vue';
 import {
-    TablerBadge,
     TablerError
 } from '@tak-ps/vue-tabler';
 import ChannelChangeModal from './components/CloudTAK/Menu/ChannelChangeModal.vue';
 import NotificationToast from './components/CloudTAK/util/NotificationToast.vue';
 import TAKNotification_ from './base/notification.ts';
 const TAKNotification = TAKNotification_;
-import { supportsServiceWorker } from './base/capacitor.ts';
+import { supportsServiceWorker } from './utils/capacitor.ts';
 import { useObservable } from '@vueuse/rxjs';
 import { from } from 'rxjs';
-import { applyServiceWorkerUpdate } from './base/service-worker.ts';
+import { applyServiceWorkerUpdate } from './utils/service-worker.ts';
 
 import { useAppStore } from './stores/app.ts';
 import { useMapStore } from './stores/map.ts';
@@ -293,17 +184,6 @@ function checkSessionExpiry() {
     }
 }
 
-const navShown = computed<boolean>(() => {
-    if (!route || !route.name) {
-        return false;
-    } else {
-        return (
-            !String(route.name).startsWith("home")
-            && !["login", "configure"].includes(String(route.name))
-        )
-    }
-});
-
 onErrorCaptured((err) => {
     const e = err instanceof Error ? err : new Error(String(err));
 
@@ -376,218 +256,4 @@ onUnmounted(() => {
     appStore.teardown();
 });
 
-function external(url: string) {
-    window.location.href = url;
-}
 </script>
-
-<style lang='scss'>
-$cloudtak-default: #182433;
-$cloudtak-child:  #192f45;
-$cloudtak-yellow: #FFB703;
-$cloudtak-orange: #FF9820;
-$cloudtak-navy: #023047;
-$cloudtak-blue: #07556D;
-
-:root {
-    --cloudtak-light: rgba(var(--tblr-primary-rgb), 0.08);
-
-    /* Native status bar height overlaying the webview - 0 on web. The Android
-     * StatusBar plugin sets --status-bar-native-height as env() is unreliable there. */
-    --status-bar-height: max(env(safe-area-inset-top, 0px), var(--status-bar-native-height, 0px));
-}
-
-.cloudtak-gradient {
-    background: radial-gradient(at left top, $cloudtak-blue, $cloudtak-navy);
-}
-
-.cloudtak-gradient-light {
-    background: radial-gradient(at left top, #f7fbff, #dde8f4);
-}
-
-/*
- * Flat page surface shared by the standalone full-screen views (video wall,
- * event board) so they all sit on the same background. Kept a shade below
- * the `.cloudtak-panel` surface in each theme so panels layered on top of a page
- * still read as raised.
- */
-html[data-bs-theme='dark'] .cloudtak-page {
-    background: #000000;
-    color: rgba(255, 255, 255, 0.92);
-}
-
-html[data-bs-theme='light'] .cloudtak-page {
-    background: var(--tblr-body-bg);
-    color: var(--tblr-body-color);
-}
-
-html[data-bs-theme='light'] .cloudtak-page .text-white:not(.badge):not(.btn):not([class*='bg-']) {
-    color: var(--tblr-body-color) !important;
-}
-
-html[data-bs-theme='light'] .cloudtak-page .text-white-50:not(.badge):not(.btn):not([class*='bg-']) {
-    color: var(--tblr-secondary-color) !important;
-}
-
-.btn-primary {
-    background-color: $cloudtak-blue !important;
-}
-
-html[data-bs-theme='dark'] {
-    --tabler-input-bg: var(--tblr-bg-forms, var(--tblr-bg-surface, var(--tblr-body-bg)));
-
-    /* Inset surfaces (`.cloudtak-accent`): blocks nested inside a panel, page or
-     * slide-down section. Translucent overlays rather than fixed colors, so they
-     * lift off whatever surface they're rendered over and stack predictably when
-     * nested. */
-    --cloudtak-inset-bg: rgba(255, 255, 255, 0.05);
-    --cloudtak-inset-border: rgba(255, 255, 255, 0.12);
-    --cloudtak-inset-hover-bg: rgba(255, 255, 255, 0.09);
-
-    /* Hover wash shared by `.cloudtak-hover`, `.cloudtak-hover-fill` and the
-     * slide-down section headers */
-    --cloudtak-hover-bg: color-mix(in srgb, var(--tblr-light) 12%, transparent);
-    --cloudtak-hover-border: color-mix(in srgb, var(--tblr-light) 30%, transparent);
-}
-
-html[data-bs-theme='light'] {
-    --tabler-input-bg: var(--cloudtak-light);
-
-    --cloudtak-inset-bg: rgba(15, 23, 42, 0.04);
-    --cloudtak-inset-border: rgba(15, 23, 42, 0.1);
-    --cloudtak-inset-hover-bg: rgba(15, 23, 42, 0.07);
-
-    --cloudtak-hover-bg: color-mix(in srgb, var(--tblr-body-color) 8%, transparent);
-    --cloudtak-hover-border: color-mix(in srgb, var(--tblr-body-color) 18%, transparent);
-}
-
-.cloudtak-accent {
-    background-color: var(--cloudtak-inset-bg) !important;
-    border-color: var(--cloudtak-inset-border) !important;
-}
-
-html[data-bs-theme='light'] .cloudtak-accent.text-white {
-    color: var(--tblr-body-color) !important;
-}
-
-html[data-bs-theme='dark'] .cloudtak-bg {
-    background-color: #283547 !important;
-}
-
-html[data-bs-theme='light'] .cloudtak-bg {
-    background-color: var(--tblr-light) !important;
-    color: var(--tblr-body-color);
-}
-
-html[data-bs-theme='light'] .cloudtak-bg.text-white {
-    color: var(--tblr-body-color) !important;
-}
-
-html[data-bs-theme='light'] .cloudtak-bg .text-white:not(.badge):not(.btn):not([class*='bg-']),
-html[data-bs-theme='light'] .cloudtak-accent .text-white:not(.badge):not(.btn):not([class*='bg-']) {
-    color: var(--tblr-body-color) !important;
-}
-
-html[data-bs-theme='light'] .cloudtak-bg .text-white-50:not(.badge):not(.btn):not([class*='bg-']),
-html[data-bs-theme='light'] .cloudtak-accent .text-white-50:not(.badge):not(.btn):not([class*='bg-']) {
-    color: var(--tblr-secondary-color) !important;
-}
-
-.bg-child {
-    background-color: $cloudtak-child !important;
-}
-
-/*
- * Shared surface for panels floating above the map (navigation banner,
- * map controls, draggable floating panes, bottom panes). Sets --tblr-border-color so
- * Bootstrap border utilities inside the panel pick up the same subtle
- * separator color, and --tblr-card-box-shadow so panels built on a Tabler
- * card get the panel shadow instead of the flat card one.
- */
-.cloudtak-panel {
-    --tblr-card-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-    border-radius: 8px;
-    box-shadow: var(--tblr-card-box-shadow);
-}
-
-/* Backgrounds mirror TablerDropdown's --tabler-dropdown-bg so floating panels
- * read as the same surface as the notification dropdown. */
-html[data-bs-theme='dark'] .cloudtak-panel {
-    --tblr-border-color: rgba(255, 255, 255, 0.14);
-    --cloudtak-panel-bg: rgba(20, 20, 25, 0.96);
-    background-color: var(--cloudtak-panel-bg);
-    color: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-html[data-bs-theme='light'] .cloudtak-panel {
-    --tblr-border-color: rgba(0, 0, 0, 0.12);
-    --cloudtak-panel-bg: rgba(255, 255, 255, 0.96);
-    background-color: var(--cloudtak-panel-bg);
-    color: var(--tblr-body-color);
-    border: 1px solid rgba(0, 0, 0, 0.12);
-}
-
-html[data-bs-theme='light'] .cloudtak-panel .text-white:not(.badge):not(.btn):not([class*='bg-']) {
-    color: var(--tblr-body-color) !important;
-}
-
-html[data-bs-theme='light'] .cloudtak-panel .text-white-50:not(.badge):not(.btn):not([class*='bg-']) {
-    color: var(--tblr-secondary-color) !important;
-}
-
-.cloudtak-hover {
-    border: 1px solid transparent;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-
-.cloudtak-hover:hover,
-.cloudtak-hover:focus-visible,
-.cloudtak-hover:focus-within {
-    border-radius: 6px;
-    border-color: var(--cloudtak-hover-border);
-    background: var(--cloudtak-hover-bg);
-}
-
-/* Fill-only variant of `.cloudtak-hover` - same wash, no border or radius of its
- * own - for rows that live inside an already bordered container and shouldn't
- * turn into a second box on hover. */
-.cloudtak-hover-fill {
-    transition: background-color 0.15s ease;
-}
-
-.cloudtak-hover-fill:hover,
-.cloudtak-hover-fill:focus-visible,
-.cloudtak-hover-fill:focus-within {
-    background-color: var(--cloudtak-hover-bg) !important;
-}
-
-.cloudtak-accent.cloudtak-hover:hover,
-.cloudtak-accent.cloudtak-hover:focus-visible,
-.cloudtak-accent.cloudtak-hover:focus-within {
-    background-color: var(--cloudtak-inset-hover-bg) !important;
-}
-
-.cloudtak-hover-hidden {
-    visibility: hidden;
-}
-
-.cloudtak-hover:hover .cloudtak-hover-hidden,
-.cloudtak-hover:focus-within .cloudtak-hover-hidden {
-    visibility: visible;
-}
-
-.border-light {
-    border-radius: 6px;
-    background-color: rgba(0, 0, 0, 0.2);
-}
-
-.border-dark {
-    background: #0f172a;
-}
-.btn-check:checked + .btn:hover {
-    background-color: var(--tblr-primary) !important;
-    border-color: var(--tblr-primary) !important;
-    color: white !important;
-}
-</style>
