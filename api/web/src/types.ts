@@ -48,6 +48,8 @@ export type UserList = paths["/api/user"]["get"]["responses"]["200"]["content"][
 export type ErrorReport = paths["/api/error/{:errorid}"]["get"]["responses"]["200"]["content"]["application/json"];
 export type ErrorReportList = paths["/api/error"]["get"]["responses"]["200"]["content"]["application/json"];
 
+export type CoreDevice = paths["/api/core/device/{:device}"]["get"]["responses"]["200"]["content"]["application/json"];
+export type CoreDeviceList = paths["/api/core/device"]["get"]["responses"]["200"]["content"]["application/json"];
 export type CoreEvent = paths["/api/core/event/{:event}"]["get"]["responses"]["200"]["content"]["application/json"];
 export type CoreEventList = paths["/api/core/event"]["get"]["responses"]["200"]["content"]["application/json"];
 export type CoreEventLink = CoreEvent["links"][0];
@@ -271,6 +273,12 @@ export type ETLRawTaskList = {
 
 export type ETLTaskVersions = paths["/api/task/raw/{:task}"]["get"]["responses"]["200"]["content"]["application/json"]
 
+export type ETLTaskVersion = paths["/api/task/raw/{:task}/version/{:version}"]["get"]["responses"]["200"]["content"]["application/json"]
+
+export type ETLTaskCapabilities = Exclude<ETLTaskVersion["capabilities"], null>
+
+
+
 export type AdminLayerUpdate = {
     id: number;
     name: string;
@@ -279,7 +287,6 @@ export type AdminLayerUpdate = {
     latest_version: string | null;
     has_update: boolean;
     has_stack: boolean;
-    template: boolean;
     connection: number | null;
     parent_name: string | null;
 }

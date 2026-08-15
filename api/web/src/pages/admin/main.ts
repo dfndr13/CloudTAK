@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import * as VueRouter from 'vue-router'
 import { createPinia } from 'pinia'
-import { initServiceWorker } from '../../base/service-worker.ts';
+import { initServiceWorker } from '../../utils/service-worker.ts';
 import { initGlobalErrorReporting, vueErrorHandler } from '../../lib/reporting/index.ts';
 
 import App from '../../App.vue';
@@ -30,10 +30,6 @@ const router = VueRouter.createRouter({
                 path: 'layer/updates',
                 name: 'admin-layer-updates',
                 component: () => import('../../components/Admin/AdminLayerUpdates.vue')
-            },{
-                path: 'layer/new',
-                name: 'admin-layer-new',
-                component: () => import('../../components/Admin/AdminLayerTemplate.vue')
             },{
                 path: 'video',
                 name: 'admin-videos',
@@ -81,12 +77,12 @@ const router = VueRouter.createRouter({
                     path: '',
                     name: 'admin-coredata-default',
                     redirect: () => {
-                        return { name: 'admin-coredata-features' };
+                        return { name: 'admin-coredata-devices' };
                     }
                 },{
-                    path: 'features',
-                    name: 'admin-coredata-features',
-                    component: () => import('../../components/Admin/CoreData/CoreDataFeatures.vue')
+                    path: 'devices',
+                    name: 'admin-coredata-devices',
+                    component: () => import('../../components/Admin/CoreData/CoreDataDevices.vue')
                 },{
                     path: 'events',
                     name: 'admin-coredata-events',

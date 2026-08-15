@@ -1,6 +1,6 @@
 <template>
     <div>
-        <div class='card-header sticky-top cloudtak-bg'>
+        <div class='card-header sticky-top cloudtak-header'>
             <h3 class='card-title'>
                 Style Overrides
             </h3>
@@ -229,7 +229,7 @@
 
 <script setup lang='ts'>
 import { ref, onMounted } from 'vue';
-import { openExternalUrl } from '../../../base/capacitor.ts';
+import { openExternalUrl } from '../../../utils/capacitor.ts';
 import { useRoute } from 'vue-router'
 import { server } from '../../../std.ts';
 import type { ETLLayer, ETLLayerTaskCapabilities } from '../../../types.ts';

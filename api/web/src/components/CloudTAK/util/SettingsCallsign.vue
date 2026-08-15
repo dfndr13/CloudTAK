@@ -108,7 +108,7 @@ import {
     IconCircleCheck,
 } from '@tabler/icons-vue';
 import CoordinateType from './CoordinateType.vue';
-import { normalizePointType } from '../../../base/utils/point-type.ts';
+import { normalizePointType } from '../../../utils/point-type.ts';
 import StandardItem from './StandardItem.vue';
 import type { Profile } from '../../../../src/types.ts';
 import Config from '../../../base/config.ts';
@@ -118,7 +118,7 @@ import {
     TablerEnum,
     TablerLoading
 } from '@tak-ps/vue-tabler';
-import { validateTextNotEmpty } from '../../../base/validators.ts';
+import { validateTextNotEmpty } from '../../../utils/validators.ts';
 import { useMapStore } from '../../../stores/map.ts';
 import ProfileConfig from '../../../base/profile.ts';
 const mapStore = useMapStore();
@@ -363,29 +363,3 @@ watch(
     { deep: true }
 );
 </script>
-
-<style scoped>
-.saved-indicator {
-    top: 10px;
-    right: 12px;
-    z-index: 1;
-}
-
-.saved-fade-enter-active {
-    transition: opacity 0.2s ease-in;
-}
-
-.saved-fade-leave-active {
-    transition: opacity 1.4s ease-out;
-}
-
-.saved-fade-enter-from,
-.saved-fade-leave-to {
-    opacity: 0;
-}
-
-.saved-fade-enter-to,
-.saved-fade-leave-from {
-    opacity: 1;
-}
-</style>

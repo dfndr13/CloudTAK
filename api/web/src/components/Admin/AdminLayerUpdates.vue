@@ -70,7 +70,7 @@
                                     <div class='d-flex flex-wrap align-items-center gap-2'>
                                         <span
                                             class='subheader'
-                                            v-text='layer.parent_name || "Template Layer"'
+                                            v-text='layer.parent_name || "Admin Layer"'
                                         />
                                         <TablerBadge
                                             v-if='!layer.has_stack'
@@ -112,7 +112,7 @@
 <script setup lang='ts'>
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { openSecondaryView } from '../../base/capacitor.ts';
+import { openSecondaryView } from '../../utils/capacitor.ts';
 import { server } from '../../std.ts';
 import type { AdminLayerUpdate, AdminLayerUpdateList } from '../../types.ts';
 import {

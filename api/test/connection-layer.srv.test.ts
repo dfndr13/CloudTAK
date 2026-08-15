@@ -25,6 +25,7 @@ const flight = new Flight();
 flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
+flight.user({ username: 'user', admin: false });
 
 flight.connection();
 
@@ -126,6 +127,8 @@ test('POST: api/connection/1/layer', async () => {
             id: 1,
             uuid: '123',
             priority: 'off',
+            permissions: null,
+            template: false,
             created: '2025-06-26',
             updated: '2025-06-26',
             username: 'admin@example.com',
@@ -135,7 +138,6 @@ test('POST: api/connection/1/layer', async () => {
             protected: false,
             logging: true,
             task: 'etl-test-v1.0.0',
-            template: false,
             connection: 1,
             memory: 256,
             timeout: 120,
@@ -178,6 +180,8 @@ test('GET: api/connection/1/layer/1', async () => {
             id: 1,
             uuid: '123',
             priority: 'off',
+            permissions: null,
+            template: false,
             created: '2025-06-26',
             updated: '2025-06-26',
             username: 'admin@example.com',
@@ -187,7 +191,6 @@ test('GET: api/connection/1/layer/1', async () => {
             protected: false,
             logging: true,
             task: 'etl-test-v1.0.0',
-            template: false,
             connection: 1,
             memory: 256,
             timeout: 120,
@@ -233,6 +236,8 @@ test('PATCH: api/connection/1/layer/1 - set protected', async () => {
             id: 1,
             uuid: '123',
             priority: 'off',
+            permissions: null,
+            template: false,
             created: '2025-06-26',
             updated: '2025-06-26',
             username: 'admin@example.com',
@@ -242,7 +247,6 @@ test('PATCH: api/connection/1/layer/1 - set protected', async () => {
             protected: true,
             logging: true,
             task: 'etl-test-v1.0.0',
-            template: false,
             connection: 1,
             memory: 256,
             timeout: 120,
@@ -302,6 +306,8 @@ test('PATCH: api/connection/1/layer/1 - unset protected', async () => {
             id: 1,
             uuid: '123',
             priority: 'off',
+            permissions: null,
+            template: false,
             created: '2025-06-26',
             updated: '2025-06-26',
             username: 'admin@example.com',
@@ -311,7 +317,6 @@ test('PATCH: api/connection/1/layer/1 - unset protected', async () => {
             protected: false,
             logging: true,
             task: 'etl-test-v1.0.0',
-            template: false,
             connection: 1,
             memory: 256,
             timeout: 120,
@@ -324,6 +329,55 @@ test('PATCH: api/connection/1/layer/1 - unset protected', async () => {
                 enabled: true,
             },
         });
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/connection/1/layer/1 - set permissions', async () => {
+    try {
+        const res = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                permissions: ['feature:submit', 'video:*'],
+            },
+        }, true);
+
+        assert.deepEqual(res.body.permissions, ['feature:submit', 'video:*']);
+
+        const unset = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                permissions: null,
+            },
+        }, true);
+
+        assert.equal(unset.body.permissions, null);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/connection/1/layer/1 - invalid permissions', async () => {
+    try {
+        const res = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                permissions: ['feature:read'],
+            },
+        }, false);
+
+        assert.equal(res.status, 400);
+        assert.ok(String(res.body.message).startsWith('Unknown Layer Permission: feature:read'));
     } catch (err) {
         assert.ifError(err);
     }
@@ -397,7 +451,6 @@ test('GET: api/layer/update-management', async () => {
                 latest_version: '1.1.0',
                 has_update: true,
                 has_stack: true,
-                template: false,
                 connection: 1,
                 parent_name: 'Test Connection',
             }, {
@@ -408,7 +461,6 @@ test('GET: api/layer/update-management', async () => {
                 latest_version: '1.1.0',
                 has_update: false,
                 has_stack: false,
-                template: false,
                 connection: 1,
                 parent_name: 'Test Connection',
             }],
@@ -602,6 +654,191 @@ test('DELETE: api/connection/1/layer/:id - layer with written COT features', asy
         }
 
         Sinon.restore();
+    }
+});
+
+test('POST: api/connection/1/layer - invalid incoming cron', async () => {
+    try {
+        const res = await flight.fetch('/api/connection/1/layer', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'Invalid Cron Layer',
+                description: 'This layer has an invalid cron',
+                task: 'etl-test-v1.0.0',
+                incoming: {
+                    cron: '0/15 * * * ? *',
+                },
+            },
+        }, false);
+
+        assert.equal(res.status, 400);
+        assert.equal(res.body.message, 'Unknown Schedule Type');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('POST: api/connection/1/layer - with incoming & outgoing config', async () => {
+    let layerId: number | undefined;
+
+    try {
+        Sinon.stub(CloudFormationClient.prototype, 'send').callsFake((command) => {
+            if (command instanceof DescribeStacksCommand) {
+                assert.deepEqual(command.input, {
+                    StackName: 'test',
+                });
+                return Promise.resolve({});
+            } else {
+                throw new Error('Unexpected command');
+            }
+        });
+
+        Sinon.stub(ECRClient.prototype, 'send').callsFake((command) => {
+            if (command instanceof BatchGetImageCommand) {
+                assert.deepEqual(command.input, {
+                    repositoryName: process.env.ECR_TASKS_REPOSITORY_NAME,
+                    imageIds: [{ imageTag: 'etl-test-v1.0.0' }],
+                });
+
+                return Promise.resolve({
+                    images: [{
+                        imageId: {
+                            imageTag: 'etl-test-v1.0.0',
+                            imageDigest: 'sha256:abcdef1234567890',
+                        },
+                        imageManifest: '{}',
+                    }],
+                });
+            } else {
+                throw new Error('Unexpected command');
+            }
+        });
+
+        const res = await flight.fetch('/api/connection/1/layer', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'Capabilities Layer',
+                description: 'This layer is created from a Capabilities document',
+                task: 'etl-test-v1.0.0',
+                memory: 512,
+                timeout: 300,
+                permissions: ['video:read'],
+                incoming: {
+                    cron: 'rate(1 minute)',
+                    webhooks: true,
+                },
+                outgoing: {},
+            },
+        }, true);
+
+        layerId = res.body.id;
+
+        assert.equal(res.body.name, 'Capabilities Layer');
+        assert.equal(res.body.memory, 512);
+        assert.equal(res.body.timeout, 300);
+        assert.deepEqual(res.body.permissions, ['video:read']);
+
+        assert.ok(res.body.incoming, 'has incoming config');
+        assert.equal(res.body.incoming.cron, 'rate(1 minute)');
+        assert.equal(res.body.incoming.webhooks, true);
+
+        assert.ok(res.body.outgoing, 'has outgoing config');
+    } catch (err) {
+        assert.ifError(err);
+    } finally {
+        if (layerId !== undefined) {
+            await flight.config!.models.LayerIncoming.delete(layerId);
+            await flight.config!.models.LayerOutgoing.delete(layerId);
+            await flight.config!.models.Layer.delete(layerId);
+        }
+
+        Sinon.restore();
+    }
+});
+
+test('POST: api/connection/0/layer - admin layer', async () => {
+    let layerId: number | undefined;
+
+    try {
+        Sinon.stub(CloudFormationClient.prototype, 'send').callsFake((command) => {
+            if (command instanceof DescribeStacksCommand) {
+                assert.deepEqual(command.input, {
+                    StackName: 'test',
+                });
+                return Promise.resolve({});
+            } else {
+                throw new Error('Unexpected command');
+            }
+        });
+
+        Sinon.stub(ECRClient.prototype, 'send').callsFake((command) => {
+            if (command instanceof BatchGetImageCommand) {
+                return Promise.resolve({
+                    images: [{
+                        imageId: {
+                            imageTag: 'etl-test-v1.0.0',
+                            imageDigest: 'sha256:abcdef1234567890',
+                        },
+                        imageManifest: '{}',
+                    }],
+                });
+            } else {
+                throw new Error('Unexpected command');
+            }
+        });
+
+        const res = await flight.fetch('/api/connection/0/layer', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'Admin Layer',
+                description: 'This is a server-wide admin layer',
+                task: 'etl-test-v1.0.0',
+            },
+        }, true);
+
+        layerId = res.body.id;
+
+        assert.equal(res.body.name, 'Admin Layer');
+        assert.equal(res.body.connection, null);
+        assert.equal(res.body.username, 'admin@example.com');
+        assert.equal(res.body.parent, undefined);
+    } catch (err) {
+        assert.ifError(err);
+    } finally {
+        if (layerId !== undefined) {
+            await flight.config!.models.Layer.delete(layerId);
+        }
+
+        Sinon.restore();
+    }
+});
+
+test('POST: api/connection/0/layer - admin layer requires admin', async () => {
+    try {
+        const res = await flight.fetch('/api/connection/0/layer', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.user,
+            },
+            body: {
+                name: 'Admin Layer',
+                description: 'This is a server-wide admin layer',
+                task: 'etl-test-v1.0.0',
+            },
+        }, false);
+
+        assert.equal(res.status, 401);
+    } catch (err) {
+        assert.ifError(err);
     }
 });
 

@@ -228,7 +228,7 @@
 
         <template #footer>
             <div
-                class='main-menu-footer flex-shrink-0 cloudtak-bg border-top'
+                class='main-menu-footer flex-shrink-0 cloudtak-header border-top'
             >
                 <div
                     class='row g-0 align-items-center'
@@ -304,7 +304,7 @@ import {
     TablerInput,
     TablerNone,
 } from '@tak-ps/vue-tabler';
-import { openSecondaryView } from '../../base/capacitor.ts';
+import { openSecondaryView } from '../../utils/capacitor.ts';
 import { version } from '../../../package.json';
 import { useMapStore } from '../../stores/map.ts';
 import { useAppStore } from '../../stores/app.ts';
@@ -504,10 +504,6 @@ function normalizeApplications(applications: unknown): AppSwitcherApplication[] 
     display: grid;
     gap: 1rem;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-}
-
-.cursor-move {
-    cursor: move !important;
 }
 
 .app-switcher-logo {

@@ -1,0 +1,426 @@
+/**
+ * CloudTAK Global Stylesheet
+ *
+ * Loaded via `<link rel='stylesheet'>` from every HTML entry point (map, admin,
+ * connection, board, video, setup). Holds design tokens, `.cloudtak-*` surface
+ * and utility classes, and app-wide Tabler overrides. Anything a single
+ * component uses belongs in that component's `<style scoped>` block.
+ *
+ * Tabler is imported here rather than from JS so the overrides below reliably
+ * land after it in the cascade.
+ */
+
+@use '@tabler/core/dist/css/tabler.min.css';
+
+$cloudtak-child: #192f45;
+$cloudtak-navy: #023047;
+$cloudtak-blue: #07556d;
+
+/* -------------------------------------------------------------------------
+ * Design tokens
+ * ------------------------------------------------------------------------- */
+
+:root {
+    --cloudtak-light: rgba(var(--tblr-primary-rgb), 0.08);
+
+    /* Native status bar height overlaying the webview - 0 on web. Android sets
+     * --status-bar-native-height from the StatusBar plugin as env() is unreliable there. */
+    --status-bar-height: max(env(safe-area-inset-top, 0px), var(--status-bar-native-height, 0px));
+}
+
+html[data-bs-theme='dark'] {
+    --tabler-input-bg: var(--tblr-bg-forms, var(--tblr-bg-surface, var(--tblr-body-bg)));
+
+    /* Inset surfaces (`.cloudtak-accent`). Translucent so they lift off whatever
+     * surface they're over and stack predictably when nested. */
+    --cloudtak-inset-bg: rgba(255, 255, 255, 0.05);
+    --cloudtak-inset-border: rgba(255, 255, 255, 0.12);
+    --cloudtak-inset-hover-bg: rgba(255, 255, 255, 0.09);
+
+    /* Hover wash */
+    --cloudtak-hover-bg: color-mix(in srgb, var(--tblr-light) 12%, transparent);
+    --cloudtak-hover-border: color-mix(in srgb, var(--tblr-light) 30%, transparent);
+
+    /* Selected state - stronger than the hover wash so a selected row still
+     * reads as selected while a neighbour is hovered. */
+    --cloudtak-active-bg: rgba(255, 255, 255, 0.14);
+    --cloudtak-active-color: #ffffff;
+}
+
+html[data-bs-theme='light'] {
+    --tabler-input-bg: var(--cloudtak-light);
+
+    --cloudtak-inset-bg: rgba(15, 23, 42, 0.04);
+    --cloudtak-inset-border: rgba(15, 23, 42, 0.1);
+    --cloudtak-inset-hover-bg: rgba(15, 23, 42, 0.07);
+
+    --cloudtak-hover-bg: color-mix(in srgb, var(--tblr-body-color) 8%, transparent);
+    --cloudtak-hover-border: color-mix(in srgb, var(--tblr-body-color) 18%, transparent);
+
+    --cloudtak-active-bg: rgba(15, 23, 42, 0.1);
+    --cloudtak-active-color: var(--tblr-body-color);
+}
+
+/* -------------------------------------------------------------------------
+ * Page surfaces
+ * ------------------------------------------------------------------------- */
+
+.cloudtak-gradient {
+    background: radial-gradient(at left top, $cloudtak-blue, $cloudtak-navy);
+}
+
+.cloudtak-gradient-light {
+    background: radial-gradient(at left top, #f7fbff, #dde8f4);
+}
+
+/* Flat page surface for the standalone full-screen views (video wall, event
+ * board). A shade below `.cloudtak-panel` so panels layered on top read as raised. */
+html[data-bs-theme='dark'] .cloudtak-page {
+    background: #000000;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+html[data-bs-theme='light'] .cloudtak-page {
+    background: var(--tblr-body-bg);
+    color: var(--tblr-body-color);
+}
+
+html[data-bs-theme='light'] .cloudtak-page .text-white:not(.badge):not(.btn):not([class*='bg-']) {
+    color: var(--tblr-body-color) !important;
+}
+
+html[data-bs-theme='light'] .cloudtak-page .text-white-50:not(.badge):not(.btn):not([class*='bg-']) {
+    color: var(--tblr-secondary-color) !important;
+}
+
+/* Shared surface for panels floating above the map (navigation banner, map
+ * controls, draggable and bottom panes), and for Tabler cards on a
+ * `.cloudtak-page`. Sets --tblr-border-color so border utilities inside a panel
+ * pick up the same separator color, and --tblr-card-box-shadow so panels built
+ * on a Tabler card get the panel shadow instead of the flat card one. */
+.cloudtak-panel,
+.cloudtak-page .card {
+    --tblr-card-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    box-shadow: var(--tblr-card-box-shadow);
+}
+
+/* Backgrounds mirror TablerDropdown's --tabler-dropdown-bg so floating panels
+ * read as the same surface as the notification dropdown. */
+html[data-bs-theme='dark'] .cloudtak-panel,
+html[data-bs-theme='dark'] .cloudtak-page .card {
+    --tblr-border-color: rgba(255, 255, 255, 0.14);
+    --cloudtak-panel-bg: rgba(20, 20, 25, 0.96);
+    background-color: var(--cloudtak-panel-bg);
+    color: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+html[data-bs-theme='light'] .cloudtak-panel,
+html[data-bs-theme='light'] .cloudtak-page .card {
+    --tblr-border-color: rgba(0, 0, 0, 0.12);
+    --cloudtak-panel-bg: rgba(255, 255, 255, 0.96);
+    background-color: var(--cloudtak-panel-bg);
+    color: var(--tblr-body-color);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+/* Drop Tabler's tinted header/footer bands so card sections read as one panel
+ * surface separated by their borders. Global rather than scoped to
+ * `.cloudtak-page .card`, because footers are often nested several levels deep
+ * or live inside modals that sit under no page at all. */
+.card-header,
+.card-footer {
+    background-color: transparent;
+}
+
+/* Repaint Tabler's table header and hover-row tints for the panel surface. */
+.cloudtak-page .card .table thead th,
+.cloudtak-page .card .table thead td {
+    background-color: transparent;
+    color: var(--tblr-secondary-color);
+}
+
+.cloudtak-page .card .table {
+    --tblr-table-hover-bg: var(--cloudtak-hover-bg, rgba(255, 255, 255, 0.06));
+}
+
+html[data-bs-theme='light'] .cloudtak-panel .text-white:not(.badge):not(.btn):not([class*='bg-']) {
+    color: var(--tblr-body-color) !important;
+}
+
+html[data-bs-theme='light'] .cloudtak-panel .text-white-50:not(.badge):not(.btn):not([class*='bg-']) {
+    color: var(--tblr-secondary-color) !important;
+}
+
+/* Navigation banner. Rendered by `Navigating.vue` but positioned relative to
+ * the map controls in `Map.vue`, so neither component owns it. */
+.cloudtak-navigating {
+    z-index: 2;
+    width: min(640px, calc(100vw - 16px));
+    border-radius: 0px 0px 6px 6px;
+}
+
+/* On small screens the banner would overlap the top controls (Active Mission,
+ * tools, menu) - drop it below them and round all four corners. */
+@media (max-width: 767.98px) {
+    .cloudtak-navigating {
+        margin-top: 74px;
+        border-radius: 6px;
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * Inset surfaces
+ * ------------------------------------------------------------------------- */
+
+.cloudtak-accent {
+    background-color: var(--cloudtak-inset-bg) !important;
+    border-color: var(--cloudtak-inset-border) !important;
+}
+
+html[data-bs-theme='light'] .cloudtak-accent.text-white {
+    color: var(--tblr-body-color) !important;
+}
+
+html[data-bs-theme='dark'] .cloudtak-bg {
+    background-color: #283547 !important;
+}
+
+html[data-bs-theme='light'] .cloudtak-bg {
+    background-color: var(--tblr-light) !important;
+    color: var(--tblr-body-color);
+}
+
+html[data-bs-theme='light'] .cloudtak-bg.text-white {
+    color: var(--tblr-body-color) !important;
+}
+
+html[data-bs-theme='light'] .cloudtak-bg .text-white:not(.badge):not(.btn):not([class*='bg-']),
+html[data-bs-theme='light'] .cloudtak-header .text-white:not(.badge):not(.btn):not([class*='bg-']),
+html[data-bs-theme='light'] .cloudtak-accent .text-white:not(.badge):not(.btn):not([class*='bg-']) {
+    color: var(--tblr-body-color) !important;
+}
+
+html[data-bs-theme='light'] .cloudtak-bg .text-white-50:not(.badge):not(.btn):not([class*='bg-']),
+html[data-bs-theme='light'] .cloudtak-header .text-white-50:not(.badge):not(.btn):not([class*='bg-']),
+html[data-bs-theme='light'] .cloudtak-accent .text-white-50:not(.badge):not(.btn):not([class*='bg-']) {
+    color: var(--tblr-secondary-color) !important;
+}
+
+.bg-child {
+    background-color: $cloudtak-child !important;
+}
+
+/* -------------------------------------------------------------------------
+ * Chrome bands
+ *
+ * Header/footer strips framing a scrolling pane: menu page headers, sticky
+ * filter controls, the sidebar footer, sticky card headers.
+ *
+ * A band paints an opaque fill so content scrolls underneath it, and takes the
+ * surrounding panel's surface so it reads as part of the pane. The fallbacks
+ * cover chrome rendered outside a panel, where --cloudtak-panel-bg is unset.
+ * `!important` is needed to beat the transparent `.card-header` rule above.
+ * ------------------------------------------------------------------------- */
+
+html[data-bs-theme='dark'] .cloudtak-header {
+    background-color: var(--cloudtak-panel-bg, rgba(20, 20, 25, 0.96)) !important;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+html[data-bs-theme='light'] .cloudtak-header {
+    background-color: var(--cloudtak-panel-bg, rgba(255, 255, 255, 0.96)) !important;
+    color: var(--tblr-body-color);
+}
+
+html[data-bs-theme='light'] .cloudtak-header.text-white {
+    color: var(--tblr-body-color) !important;
+}
+
+/* -------------------------------------------------------------------------
+ * Hover affordances
+ * ------------------------------------------------------------------------- */
+
+.cloudtak-hover {
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.cloudtak-hover:hover,
+.cloudtak-hover:focus-visible,
+.cloudtak-hover:focus-within {
+    border-radius: 6px;
+    border-color: var(--cloudtak-hover-border);
+    background: var(--cloudtak-hover-bg);
+}
+
+/* Fill-only variant of `.cloudtak-hover` - same wash, no border or radius - for
+ * rows inside an already bordered container. */
+.cloudtak-hover-fill {
+    transition: background-color 0.15s ease;
+}
+
+.cloudtak-hover-fill:hover,
+.cloudtak-hover-fill:focus-visible,
+.cloudtak-hover-fill:focus-within {
+    background-color: var(--cloudtak-hover-bg) !important;
+}
+
+.cloudtak-accent.cloudtak-hover:hover,
+.cloudtak-accent.cloudtak-hover:focus-visible,
+.cloudtak-accent.cloudtak-hover:focus-within {
+    background-color: var(--cloudtak-inset-hover-bg) !important;
+}
+
+.cloudtak-hover-hidden {
+    visibility: hidden;
+}
+
+.cloudtak-hover:hover .cloudtak-hover-hidden,
+.cloudtak-hover:focus-within .cloudtak-hover-hidden {
+    visibility: visible;
+}
+
+/* -------------------------------------------------------------------------
+ * List-group navigation
+ *
+ * Sidebar navigation is a Tabler `.list-group` whose current row carries
+ * `.active`. Repaint Tabler's blue-slate selection as a neutral wash from the
+ * hover/inset tokens, so the row is distinguished by weight and contrast
+ * rather than hue. Components only toggle the `.active` class.
+ * ------------------------------------------------------------------------- */
+
+.list-group {
+    /* Tabler resolves these per-list-group, so setting them here covers every
+     * variant that reads its custom properties. */
+    --tblr-list-group-active-bg: var(--cloudtak-active-bg);
+    --tblr-list-group-active-color: var(--cloudtak-active-color);
+    --tblr-list-group-action-hover-bg: var(--cloudtak-hover-bg);
+}
+
+/* `.list-group-transparent` hardcodes `var(--tblr-active-bg)` instead of reading
+ * the properties above, so it needs repainting directly. */
+.list-group .list-group-item.active,
+.list-group-transparent .list-group-item.active {
+    background: var(--cloudtak-active-bg);
+    color: var(--cloudtak-active-color);
+    font-weight: var(--tblr-font-weight-bold);
+}
+
+/* -------------------------------------------------------------------------
+ * Shared primitives
+ * ------------------------------------------------------------------------- */
+
+/* Fixed-size square holding a list row's leading icon or thumbnail, so rows
+ * stay aligned regardless of what the icon renders as. */
+.icon-wrapper {
+    width: 3rem;
+    height: 3rem;
+    min-width: 3rem;
+    min-height: 3rem;
+    flex-shrink: 0;
+}
+
+/* Circular icon badge used by the paging (alerting) settings & modal */
+.paging-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+}
+
+/* Transient "Saved" pill overlaid on the top-right of a settings card */
+.saved-indicator {
+    top: 10px;
+    right: 12px;
+    z-index: 1;
+}
+
+/* -------------------------------------------------------------------------
+ * Shared <Transition> names
+ *
+ * Vue resolves transition classes globally, so one definition per name serves
+ * every component using it.
+ * ------------------------------------------------------------------------- */
+
+/* `saved-fade` - quick fade in, slow fade out, for save confirmations */
+.saved-fade-enter-active {
+    transition: opacity 0.2s ease-in;
+}
+
+.saved-fade-leave-active {
+    transition: opacity 1.4s ease-out;
+}
+
+.saved-fade-enter-from,
+.saved-fade-leave-to {
+    opacity: 0;
+}
+
+.saved-fade-enter-to,
+.saved-fade-leave-from {
+    opacity: 1;
+}
+
+/* `stage-fade` / `reset-fade` - loading screen stage labels */
+.stage-fade-enter-active,
+.stage-fade-leave-active {
+    transition: opacity 0.4s ease;
+}
+
+.stage-fade-enter-from,
+.stage-fade-leave-to {
+    opacity: 0;
+}
+
+.reset-fade-enter-active {
+    transition: opacity 1s ease-in;
+}
+
+.reset-fade-enter-from {
+    opacity: 0;
+}
+
+/* `menu-overlays-fade` - collapsing menu sections */
+.menu-overlays-fade-enter-active,
+.menu-overlays-fade-leave-active {
+    transition: all 0.2s ease-out;
+    max-height: 500px;
+    opacity: 1;
+    overflow: hidden;
+}
+
+.menu-overlays-fade-enter-from,
+.menu-overlays-fade-leave-to {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* -------------------------------------------------------------------------
+ * Bootstrap / Tabler overrides
+ * ------------------------------------------------------------------------- */
+
+.btn-primary {
+    background-color: $cloudtak-blue !important;
+}
+
+.btn-check:checked + .btn:hover {
+    background-color: var(--tblr-primary) !important;
+    border-color: var(--tblr-primary) !important;
+    color: white !important;
+}
+
+.border-light {
+    border-radius: 6px;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.border-dark {
+    background: #0f172a;
+}

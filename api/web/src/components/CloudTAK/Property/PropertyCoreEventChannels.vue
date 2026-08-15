@@ -125,10 +125,16 @@
                                     >
                                         {{ columnOf(board)?.name }}
                                     </TablerBadge>
-                                    <span
+                                    <button
                                         v-else
-                                        class='small text-secondary user-select-none'
-                                    >Not Nominated</span>
+                                        type='button'
+                                        class='btn btn-success btn-sm py-0'
+                                        :title='`Nominate this Event to ${board.name}`'
+                                        @click.stop='emit("nominate", board)'
+                                        @keydown.enter.stop
+                                    >
+                                        Nominate
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -144,7 +150,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import SlideDownHeader from '../util/SlideDownHeader.vue';
 import GroupSelect from '../../util/GroupSelect.vue';
 import GroupManager from '../../../base/group.ts';
-import { openSecondaryView } from '../../../base/capacitor.ts';
+import { openSecondaryView } from '../../../utils/capacitor.ts';
 import type { GroupChannel, CoreEventBoardSummary, CoreEventBoardColumnSummary } from '../../../types.ts';
 import { TablerNone, TablerBadge, TablerLoading, TablerIconButton } from '@tak-ps/vue-tabler';
 import {
@@ -166,6 +172,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (e: 'update:modelValue', value: Array<number>): void
+    (e: 'nominate', board: CoreEventBoardSummary): void
 }>();
 
 const expanded = ref(true);
