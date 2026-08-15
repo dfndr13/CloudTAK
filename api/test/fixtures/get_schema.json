@@ -109,6 +109,11 @@
         "query": false,
         "res": true
     },
+    "GET /config/webhooks": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /connection/:connectionid/asset": {
         "body": false,
         "query": false,
@@ -429,6 +434,31 @@
         "query": false,
         "res": true
     },
+    "GET /core/device": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /core/device/:device": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /core/device": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /core/device/:device": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /core/device/:device": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /board": {
         "body": false,
         "query": true,
@@ -662,16 +692,6 @@
     "GET /layer/:layerid": {
         "body": false,
         "query": true,
-        "res": true
-    },
-    "GET /template": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /template": {
-        "body": true,
-        "query": false,
         "res": true
     },
     "GET /ldap/channel": {
@@ -1414,6 +1434,11 @@
         "query": false,
         "res": true
     },
+    "GET /task/raw/:task/version/:version": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "DELETE /task/raw/:task/version/:version": {
         "body": false,
         "query": false,
@@ -1539,51 +1564,6 @@
         "query": false,
         "res": true
     },
-    "GET /dispatcher/settings": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PUT /dispatcher/settings/:key": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/events": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /dispatcher/events": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PATCH /dispatcher/events/:eventid": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /dispatcher/events/:eventid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/events/:eventid/incidents": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /dispatcher/events/:eventid/incidents": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PATCH /dispatcher/incidents/:incidentid": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
     "POST /replay/record/start": {
         "body": true,
         "query": false,
@@ -1669,54 +1649,49 @@
         "query": false,
         "res": true
     },
-    "GET /search": {
+    "GET /dispatcher/settings": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /search/reverse/:longitude/:latitude": {
+    "PUT /dispatcher/settings/:key": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/events": {
         "body": false,
         "query": true,
         "res": true
     },
-    "GET /search/reverse/:longitude/:latitude/sun": {
-        "body": false,
-        "query": true,
+    "POST /dispatcher/events": {
+        "body": true,
+        "query": false,
         "res": true
     },
-    "GET /search/reverse/:longitude/:latitude/magnetic": {
+    "PATCH /dispatcher/events/:eventid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /dispatcher/events/:eventid": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /search/reverse/:longitude/:latitude/weather": {
+    "GET /dispatcher/events/:eventid/incidents": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /search/reverse/:longitude/:latitude/reverse": {
-        "body": false,
-        "query": true,
+    "POST /dispatcher/events/:eventid/incidents": {
+        "body": true,
+        "query": false,
         "res": true
     },
-    "GET /search/reverse/:longitude/:latitude/elevation": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /search/route": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /search/forward": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /search/suggest": {
-        "body": false,
-        "query": true,
+    "PATCH /dispatcher/incidents/:incidentid": {
+        "body": true,
+        "query": false,
         "res": true
     },
     "GET /iconset": {
@@ -1783,5 +1758,55 @@
         "body": false,
         "query": true,
         "res": false
+    },
+    "GET /search": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/sun": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/magnetic": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/weather": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/reverse": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/elevation": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/route": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/forward": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/suggest": {
+        "body": false,
+        "query": true,
+        "res": true
     }
 }
