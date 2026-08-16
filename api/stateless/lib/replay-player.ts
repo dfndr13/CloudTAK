@@ -16,6 +16,14 @@ import { sql } from 'drizzle-orm';
 
 type ReplayCategory = 'aircraft' | 'uas' | 'ground' | 'maritime' | 'other';
 
+// ReplayPanel.vue polls GET status every 1s for as long as its session is
+// active, so silence on status() is a reliable disconnect signal - covers
+// tab closes/crashes/network loss, none of which fire any close/unmount
+// hook the server could otherwise catch. Generous margin above the 1s poll
+// interval to tolerate normal jitter (slow requests, a dev-tools breakpoint)
+// without reaping a still-attached session.
+const SESSION_IDLE_TIMEOUT_MS = 30_000;
+
 function categorize(cotType: string, how?: string): ReplayCategory {
     if (!cotType.startsWith('a-')) return 'other';
     const dim = cotType.split('-')[2];
@@ -73,6 +81,11 @@ export interface PlaybackControl {
     // after a full resync, so playback resumes delta-only from the new point.
     lastPublishedAt: Date;
     activeCategories: Set<ReplayCategory>;
+    // Last time the client polled status() for this session - the only
+    // recurring signal the server gets that a client is still attached.
+    // Used by tick() to reap sessions abandoned by a disconnect that never
+    // called stop() (see SESSION_IDLE_TIMEOUT_MS).
+    lastSeen: Date;
 }
 
 interface ReplayCotRow {
@@ -107,6 +120,7 @@ export default class Player {
             // is included in the first tick's (lastPublishedAt, virtualNow] window.
             lastPublishedAt: new Date(windowStart.getTime() - 1),
             activeCategories: new Set(['aircraft', 'uas', 'ground', 'maritime', 'other']),
+            lastSeen: new Date(),
         });
 
         this.tick(sessionId);
@@ -143,6 +157,7 @@ export default class Player {
         const totalMs = s.windowEnd.getTime() - s.windowStart.getTime();
         const elapsedMs = s.virtualNow.getTime() - s.windowStart.getTime();
         const percent = totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0;
+        s.lastSeen = new Date();
         return {
             active: true,
             paused: s.paused,
@@ -189,6 +204,18 @@ export default class Player {
     private async tick(sessionId: string) {
         const s = this.sessions.get(sessionId);
         if (!s) return;
+
+        // No client has polled status() (the only recurring liveness signal
+        // this stateless-REST session design gets) in too long - the client
+        // disconnected (tab closed, crash, network loss) without ever
+        // calling stop(). Clean up the same way stop() does instead of
+        // ticking this session forever.
+        if (Date.now() - s.lastSeen.getTime() > SESSION_IDLE_TIMEOUT_MS) {
+            console.warn(`[replay] session ${sessionId} idle for over ${SESSION_IDLE_TIMEOUT_MS}ms, reaping abandoned playback`);
+            this.sessions.delete(sessionId);
+            return;
+        }
+
         if (s.paused) {
             setTimeout(() => this.tick(sessionId), 1000);
             return;
