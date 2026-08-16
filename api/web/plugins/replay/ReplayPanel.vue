@@ -265,6 +265,14 @@ onMounted(async () => {
 onUnmounted(() => {
     if (pollHandle) clearInterval(pollHandle);
     if (session.value) {
+        // Tell the server this session is done, same as stopPlayback() -
+        // otherwise it sits idle server-side until SESSION_IDLE_TIMEOUT_MS
+        // reaps it. Fire-and-forget: the component is already tearing down,
+        // there's nothing left here to await the response for.
+        std(`/api/replay/session/${session.value}/stop`, { method: 'POST' }).catch(() => {
+            // Best-effort - the idle-timeout reaper on the server is the
+            // backstop if this never lands.
+        });
         // Null this out (not just clearInterval) so a poll tick that's
         // already mid-flight - past pollStatus(), about to call
         // hideNewLiveFeatures() - bails at the session.value guard below
