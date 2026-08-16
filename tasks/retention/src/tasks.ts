@@ -84,7 +84,7 @@ export const tasks: RetentionTask[] = [{
 }, {
     name: 'replay',
     enabled: (config: RetentionTaskConfig): boolean => {
-        return config['retention::replay::enabled'] !== false;
+        return config['retention::replay::enabled'] === true;
     },
     run: async (): Promise<RetentionTaskResult> => {
         return await postRetention('replay');
