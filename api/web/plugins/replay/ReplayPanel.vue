@@ -291,6 +291,17 @@ async function startRecording() {
     await std('/api/replay/record/start', { method: 'POST', body: { name: newEventName.value } });
     newEventName.value = '';
     await refreshRecordingStatus();
+
+    // The server is already recording at this point (the POST above
+    // succeeded) - snapshot everything currently on the map now, so
+    // pre-existing features have an initial row in this recording instead
+    // of only ever being captured if something happens to update them
+    // during the window.
+    try {
+        await mapStore.worker.db.snapshotForRecording();
+    } catch (err) {
+        console.warn('Failed to snapshot pre-existing features into new recording:', err);
+    }
 }
 
 async function stopRecording() {
