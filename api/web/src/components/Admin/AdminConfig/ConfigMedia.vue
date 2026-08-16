@@ -213,6 +213,7 @@ async function save(): Promise<void> {
     try {
         const { error } = await server.PUT('/api/config', {
             body: {
+                'media::url': config.value['media::public_url'].trim(),
                 'media::internal_url': config.value['media::internal_url'].trim(),
                 'media::public_url': config.value['media::public_url'].trim(),
                 'media::proxy::allow': config.value['media::proxy::allow'],
