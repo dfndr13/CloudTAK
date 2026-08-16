@@ -178,6 +178,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { std } from '../../src/std.ts';
 import FeatureManager from '../../src/base/feature.ts';
+import { db } from '../../src/database.ts';
 import { FeatureVisibility } from '../../src/stores/modules/feature-visibility.ts';
 import ProfileConfig from '../../src/base/profile.ts';
 import { useMapStore } from '../../src/stores/map.ts';
@@ -303,9 +304,25 @@ async function resolveSelfUid(): Promise<string | null> {
     return username?.value ? `ANDROID-CloudTAK-${username.value}` : null;
 }
 
+// FeatureManager.list() only covers the plain (non-Mission) feature table.
+// Mission-linked content (anything drawn/shared into an active Mission, or
+// synced from one) lives in its own subscription_feature table instead - see
+// atlas-database.ts's add(), which stores it there with skipSave: true so it
+// never reaches the plain table at all. Without merging both in, replay's
+// hide/show sweep is structurally blind to Mission content: it never gets
+// hidden at playback start and never gets confirmed as belonging to the
+// session, so it just sits visible throughout regardless of replay state.
+async function listAllLive() {
+    const [features, missionFeatures] = await Promise.all([
+        FeatureManager.list(),
+        db.subscription_feature.toCollection().toArray(),
+    ]);
+    return [...features, ...missionFeatures];
+}
+
 async function hideLiveFeatures() {
     selfUid = await resolveSelfUid();
-    const live = await FeatureManager.list();
+    const live = await listAllLive();
 
     // FeatureVisibility is a single flat store shared with the rest of the
     // app (e.g. Mission Layers' own hide/show toggle) - it has no concept of
@@ -326,7 +343,7 @@ async function hideLiveFeatures() {
 }
 
 async function hideNewLiveFeatures() {
-    const live = await FeatureManager.list();
+    const live = await listAllLive();
 
     // A feature only belongs to this session once its CoT generation time
     // has actually moved past the baseline - that's proof a new message

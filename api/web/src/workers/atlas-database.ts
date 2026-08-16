@@ -885,6 +885,18 @@ export default class AtlasDatabase {
 
             await this.breadcrumb.update(exists);
 
+            // Same direct-write capture as the non-Mission branch below: a
+            // Mission-linked authored feature is stored in the mission's own
+            // subscription_feature table (skipSave: true above), never in the
+            // plain profile feature table, and TAK Server only rebroadcasts a
+            // "mission changed" notification over the connection - not the
+            // feature's own CoT - so ConnectionPool.cots()/Recorder.record()
+            // never captures its actual content either. Without this it's
+            // invisible to replay, same reasoning as the comment below.
+            if (opts.authored && this.recordingActive) {
+                void this.recordDirectWrite(exists);
+            }
+
             return exists;
         } else {
             if (exists) {
