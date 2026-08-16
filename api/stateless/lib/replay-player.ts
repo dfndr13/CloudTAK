@@ -162,7 +162,13 @@ export default class Player {
         s.paused = true;
         // Jumping to an arbitrary (possibly earlier) point needs a full resync
         // of "what's true as of here", not a delta off the old watermark.
-        this.publishStateAt(s, { fullSnapshot: true });
+        // Fire-and-forget, same as tick()'s call below - back()/seekPercent()
+        // both funnel through here, so this one catch covers all three public
+        // entry points against the same unhandled-rejection crash risk tick()
+        // already guards against.
+        this.publishStateAt(s, { fullSnapshot: true }).catch((err) => {
+            console.error(`[replay] seek failed for session ${sessionId}:`, err);
+        });
     }
 
     back(sessionId: string, wallSeconds = 30) {
