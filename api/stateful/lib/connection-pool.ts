@@ -292,7 +292,12 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
         opts: { replay?: boolean } = {},
     ) {
         try {
-            if (this.recorder.active()) await this.recorder.record(conn, cots);
+            // Replayed CoTs (opts.replay) are a rewritten-timestamp preview of
+            // already-recorded history, not new live traffic - never feed them
+            // back into a concurrently active recording of a *different*
+            // session, or a recording would end up with looped-back playback
+            // data instead of what's actually happening live.
+            if (this.recorder.active() && !opts.replay) await this.recorder.record(conn, cots);
 
             if (conn instanceof ProfileConnConfig) {
                 for (const cot of cots) {
