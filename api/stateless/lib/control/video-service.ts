@@ -565,13 +565,13 @@ export default class VideoServiceControl {
 
         if (lease.proxy) {
             try {
-                // Media server hostnames (internal and public) are always trusted, so a
-                // lease.proxy source that points back at our own media server - via either
-                // address - is permitted; operators may add additional trusted proxy source
-                // hostnames/origins via the media::proxy::allow config
+                // Only the media server's internal hostname is implicitly trusted, so a
+                // lease.proxy source that points back at our own media server is
+                // permitted; the public-facing hostname is NOT automatically trusted -
+                // operators must explicitly add it (or any other hostname) via the
+                // media::proxy::allow config if proxying through it should be allowed
                 const proxyAllow = [
                     new URL(video.url!).hostname,
-                    ...(video.publicUrl ? [new URL(video.publicUrl).hostname] : []),
                     ...(await this.config.models.Setting.typed('media::proxy::allow', [])).value,
                 ];
 
