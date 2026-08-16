@@ -653,6 +653,16 @@ export default class AtlasDatabase {
                 skipNetwork: opts.skipNetwork
             });
 
+            // Same reasoning as the CONNECTION branch above: SubscriptionFeature
+            // .delete() has no concept of replay recording, so a Mission-linked
+            // delete was invisible to it - the feature just vanished from replay
+            // with no marker, instead of showing as present until this moment.
+            // Record regardless of skipNetwork for the same reason as above (it
+            // only means "don't redundantly call the network DELETE").
+            if (this.recordingActive) {
+                void this.recordRemoval(cot.id);
+            }
+
             this.atlas.postMessage({
                 type: WorkerMessageType.Mission_Change_Feature,
                 body: {
@@ -727,6 +737,16 @@ export default class AtlasDatabase {
                         // This is critical to ensure a recursive loop of doesn't occur
                         skipNetwork: true
                     });
+
+                    // This path fires for any REMOVE_CONTENT notification TAK
+                    // Server broadcasts to subscribed clients - including
+                    // deletions made by other users/devices, not just this
+                    // one's own remove() calls above. Recording is meant to
+                    // capture what actually happened to the mission during
+                    // the window regardless of who did it.
+                    if (this.recordingActive) {
+                        void this.recordRemoval(change.contentUid);
+                    }
 
                     updateGuid = task.properties.mission.guid;
                 }
@@ -1082,8 +1102,17 @@ export default class AtlasDatabase {
      * Direct-write a drawn/authored feature's current state into the active
      * recording, bypassing TAK Server and connection-pool.ts entirely. Fire
      * and forget - a failure here shouldn't block the local save.
+     *
+     * Accepts anything with an id/properties/geometry - not just a live COT
+     * instance - so snapshotForRecording() below can pass plain DBFeature/
+     * DBSubscriptionFeature rows straight from Dexie without constructing a
+     * full COT for each one.
      */
-    private async recordDirectWrite(cot: COT): Promise<void> {
+    private async recordDirectWrite(cot: {
+        id: string;
+        properties: Feature['properties'];
+        geometry: Feature['geometry'];
+    }): Promise<void> {
         try {
             await std('/api/replay/record/feature', {
                 token: this.atlas.token,
@@ -1097,6 +1126,29 @@ export default class AtlasDatabase {
             });
         } catch (err) {
             console.error('Failed to record drawn feature to active recording:', err);
+        }
+    }
+
+    /**
+     * Push a one-time snapshot of every currently-live feature - plain
+     * (db.feature) and Mission-linked (db.subscription_feature) alike -
+     * into the recording that was just started, so pre-existing state has
+     * an initial row in replay_cot from the very start of the window
+     * instead of only whatever happens to change during the recording
+     * itself. Called once by ReplayPanel.vue's startRecording(),
+     * immediately after POST /replay/record/start succeeds - the server
+     * is already recording by the time this runs, so each direct-write
+     * below lands in the right event regardless of this worker's own
+     * recordingActive flag having been synced yet.
+     */
+    async snapshotForRecording(): Promise<void> {
+        const [features, missionFeatures] = await Promise.all([
+            db.feature.toCollection().toArray(),
+            db.subscription_feature.toCollection().toArray(),
+        ]);
+
+        for (const feature of [...features, ...missionFeatures]) {
+            void this.recordDirectWrite(feature);
         }
     }
 
