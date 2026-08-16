@@ -616,10 +616,6 @@ export default class AtlasDatabase {
             this.pendingDelete.add(id);
 
             if (cot.properties.archived) {
-                this.atlas.postMessage({
-                    type: WorkerMessageType.Feature_Archived_Removed
-                });
-
                 // Same archived/CONNECTION signal as the direct-write capture
                 // in add() - this is one of the user's own drawn/authored
                 // features. Record the removal regardless of skipNetwork:
