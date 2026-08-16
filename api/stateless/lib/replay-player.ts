@@ -288,10 +288,16 @@ export default class Player {
 
         if (cots.length === 0) return;
 
+        // write: false / broadcast: true - playback must never reach the real
+        // TAK Server (see file header); it should only reach the requesting
+        // user's own browser session, via the same wsClients broadcast path
+        // (ConnectionPool.cots()) their normal live CoT traffic already uses.
         await this.config.hub.submitCots({
             connection: s.username,
             cots,
             ensureProfile: true,
+            write: false,
+            broadcast: true,
             replay: true,
         });
     }
