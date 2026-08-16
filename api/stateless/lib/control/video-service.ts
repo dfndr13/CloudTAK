@@ -185,7 +185,22 @@ export default class VideoServiceControl {
         ]);
 
         const internal = internalValue || legacyValue;
-        const external = publicValue || legacyValue || internalValue;
+        let external = publicValue || legacyValue || internalValue;
+
+        // Docker Compose network alias ('media') only resolves from other
+        // containers on that network, never from a browser - if no explicit
+        // media::public_url (or legacy media::url) was configured, external
+        // still falls back to this internal-only hostname. Rewrite just the
+        // hostname to localhost (preserving the port, unlike the pre-split
+        // media::url hack, which dropped it) so a bare Compose deployment
+        // without media::public_url set still gets a browser-usable URL.
+        if (external) {
+            const externalUrl = new URL(external);
+            if (externalUrl.hostname === 'media') {
+                externalUrl.hostname = 'localhost';
+                external = externalUrl.toString();
+            }
+        }
 
         if (!internal) {
             return {
