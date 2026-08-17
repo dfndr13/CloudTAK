@@ -120,11 +120,13 @@ const videoProtocols = ref<VideoLeaseMetadata["protocols"] | undefined>();
 const isBuffering = ref(false);
 const bufferCheckInterval = ref<number | undefined>();
 const bufferRecoveryTimeout = ref<number | undefined>();
+const bufferRestartTimeout = ref<number | undefined>();
 
 const BUFFER_LOW_THRESHOLD = 2;
 const BUFFER_RECOVERY_THRESHOLD = 5;
 const BUFFER_CHECK_INTERVAL_MS = 500;
 const BUFFER_RECOVERY_TIMEOUT_MS = 10000;
+const BUFFER_RESTART_TIMEOUT_MS = 20000;
 const RETRY_RESET_STABLE_MS = 30000;
 const LEASE_RENEW_DURATION = 60 * 60 * 24;
 
@@ -170,6 +172,11 @@ function clearBufferRecoveryTimeout(): void {
         clearTimeout(bufferRecoveryTimeout.value);
         bufferRecoveryTimeout.value = undefined;
     }
+
+    if (bufferRestartTimeout.value) {
+        clearTimeout(bufferRestartTimeout.value);
+        bufferRestartTimeout.value = undefined;
+    }
 }
 
 function setBuffering(buffering: boolean): void {
@@ -184,8 +191,23 @@ function setBuffering(buffering: boolean): void {
     bufferRecoveryTimeout.value = window.setTimeout(() => {
         if (!isBuffering.value) return;
 
-        console.warn('Buffering did not recover in time, attempting stream restart');
-        handleStreamRestart();
+        // Try resuming the existing session before reaching for a full restart.
+        // handleStreamRestart()'s loadSource() forces MediaMTX to mint a brand-new
+        // HLS session even when the underlying stream is fine - each one requires
+        // the muxer to restart, which is its own brief stutter. Escalating straight
+        // to a restart on every stall risks a self-reinforcing loop (restart -> new
+        // session's own startup blip reads as more buffering -> restart again).
+        // startLoad() resumes fetching within the current session at no such cost,
+        // so give it a real chance to work first.
+        console.warn('Buffering did not recover in time, resuming existing session before considering a restart');
+        player.value?.startLoad();
+
+        bufferRestartTimeout.value = window.setTimeout(() => {
+            if (!isBuffering.value) return;
+
+            console.warn('Buffering still did not recover after resuming, attempting stream restart');
+            handleStreamRestart();
+        }, BUFFER_RESTART_TIMEOUT_MS);
     }, BUFFER_RECOVERY_TIMEOUT_MS);
 }
 
