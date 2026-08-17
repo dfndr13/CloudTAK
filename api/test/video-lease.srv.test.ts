@@ -197,6 +197,54 @@ test('PATCH: api/video/lease/:lease - Update Lease', async () => {
     }
 });
 
+test('GET: api/video/active - resolves a lease reached via media::playback_url hostname', async () => {
+    if (!flight.config) throw new Error('Flight config not initialized');
+
+    try {
+        await flight.config.models.Setting.generate({
+            key: 'media::playback_url',
+            value: 'http://playback.example.com',
+        });
+    } catch (err) {
+        assert.ifError(err);
+    }
+
+    const mediaClient = agent.get('http://media-server:9997');
+    mediaClient.intercept({
+        path: `/path/${leasePath}`,
+        method: 'GET',
+    }).reply(200, {
+        name: leasePath,
+        confName: leasePath,
+        source: null,
+        ready: true,
+        readyTime: null,
+        tracks: [],
+        bytesReceived: 0,
+        bytesSent: 0,
+        readers: [],
+    });
+
+    try {
+        const res = await flight.fetch(`/api/video/active?url=${encodeURIComponent(`http://playback.example.com/stream/${leasePath}/index.m3u8`)}`, {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.equal(res.status, 200, 'Status 200');
+        // A hostname matching media::playback_url (rather than media::public_url)
+        // must still be recognized as CloudTAK's own - resolving to the lease's
+        // real metadata instead of falling through to the generic "leasable"
+        // response with no metadata (the bug this test guards against).
+        assert.notEqual(res.body.metadata, undefined, 'metadata populated');
+        assert.equal(res.body.metadata.name, 'Updated Lease Name', 'metadata resolved from the matched lease');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 test('DELETE: api/video/lease/:lease - lease saved as a Profile Video', async () => {
     if (!flight.config) throw new Error('Flight config not initialized');
 

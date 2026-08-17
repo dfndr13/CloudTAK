@@ -170,6 +170,19 @@ export default class VideoServiceControl {
         return new URL(video.publicUrl);
     }
 
+    // A client-provided stream URL may legitimately be hosted on either the
+    // public media URL (media::public_url) or the separate HLS playback URL
+    // (media::playback_url, e.g. a reverse proxy on a standard port) - a
+    // stream is only "ours" if its hostname matches one of the two.
+    async isOwnHostname(hostname: string): Promise<boolean> {
+        const video = await this.settings();
+        if (!video.configured) return false;
+
+        return [video.publicUrl, video.playbackUrl]
+            .filter((u): u is string => !!u)
+            .some(u => new URL(u).hostname === hostname);
+    }
+
     async settings(): Promise<{
         configured: boolean;
         url?: string;
