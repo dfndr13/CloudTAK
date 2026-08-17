@@ -2250,9 +2250,9 @@ export interface paths {
                             /** @description Legacy base URL for Media Service */
                             "media::url"?: string;
                             /** @description Internal base URL for Media Service API calls */
-                            "media::internal_url"?: string;
+                            "media::internal::url"?: string;
                             /** @description Public base URL for Media Service playback and metadata */
-                            "media::public_url"?: string;
+                            "media::public::url"?: string;
                             "media::proxy::allow"?: string[];
                             /** @description COTURN Server URL */
                             "coturn::url"?: string;
@@ -2503,9 +2503,9 @@ export interface paths {
                         /** @description Legacy base URL for Media Service */
                         "media::url"?: string;
                         /** @description Internal base URL for Media Service API calls */
-                        "media::internal_url"?: string;
+                        "media::internal::url"?: string;
                         /** @description Public base URL for Media Service playback and metadata */
-                        "media::public_url"?: string;
+                        "media::public::url"?: string;
                         "media::proxy::allow"?: string[];
                         /** @description COTURN Server URL */
                         "coturn::url"?: string;
@@ -2691,9 +2691,9 @@ export interface paths {
                             /** @description Legacy base URL for Media Service */
                             "media::url"?: string;
                             /** @description Internal base URL for Media Service API calls */
-                            "media::internal_url"?: string;
+                            "media::internal::url"?: string;
                             /** @description Public base URL for Media Service playback and metadata */
-                            "media::public_url"?: string;
+                            "media::public::url"?: string;
                             "media::proxy::allow"?: string[];
                             /** @description COTURN Server URL */
                             "coturn::url"?: string;

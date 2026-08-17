@@ -234,7 +234,7 @@ test('GET: api/video/active - resolves a lease reached via media::playback_url h
         }, true);
 
         assert.equal(res.status, 200, 'Status 200');
-        // A hostname matching media::playback_url (rather than media::public_url)
+        // A hostname matching media::playback_url (rather than media::public::url)
         // must still be recognized as CloudTAK's own - resolving to the lease's
         // real metadata instead of falling through to the generic "leasable"
         // response with no metadata (the bug this test guards against).

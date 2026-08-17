@@ -15,15 +15,15 @@ function withMediaFallback(
     keys: (keyof Static<typeof FullConfig>)[],
 ): Partial<Static<typeof FullConfig>> {
     const legacy = config['media::url'];
-    const internal = config['media::internal_url'] || legacy || config['media::public_url'];
-    const publicUrl = config['media::public_url'] || legacy || config['media::internal_url'];
+    const internal = config['media::internal::url'] || legacy || config['media::public::url'];
+    const publicUrl = config['media::public::url'] || legacy || config['media::internal::url'];
 
-    if (keys.includes('media::internal_url') && internal !== undefined) {
-        config['media::internal_url'] = internal;
+    if (keys.includes('media::internal::url') && internal !== undefined) {
+        config['media::internal::url'] = internal;
     }
 
-    if (keys.includes('media::public_url') && publicUrl !== undefined) {
-        config['media::public_url'] = publicUrl;
+    if (keys.includes('media::public::url') && publicUrl !== undefined) {
+        config['media::public::url'] = publicUrl;
     }
 
     if (keys.includes('media::url') && publicUrl !== undefined) {
@@ -36,7 +36,7 @@ function withMediaFallback(
 // Allows Unauthenticated Access to these Config Keys
 export const PublicConfigKeys: (keyof Static<typeof FullConfig>)[] = [
     'media::url',
-    'media::public_url',
+    'media::public::url',
     'login::signup',
     'login::forgot',
     'login::name',
