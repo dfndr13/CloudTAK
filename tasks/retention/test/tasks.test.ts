@@ -18,17 +18,8 @@ test('connection-feature is enabled unless explicitly disabled', () => {
     assert.strictEqual(task.enabled({ 'retention::connection-feature::enabled': false }), false);
 });
 
-test('replay is enabled unless explicitly disabled', () => {
-    const task = tasks.find(t => t.name === 'replay');
-    assert.ok(task?.enabled);
-
-    assert.strictEqual(task.enabled({}), true);
-    assert.strictEqual(task.enabled({ 'retention::replay::enabled': true }), true);
-    assert.strictEqual(task.enabled({ 'retention::replay::enabled': false }), false);
-});
-
-test('chat/import/feature are opt-in', () => {
-    for (const name of ['chat', 'import', 'feature'] as const) {
+test('chat/import/feature/replay are opt-in', () => {
+    for (const name of ['chat', 'import', 'feature', 'replay'] as const) {
         const task = tasks.find(t => t.name === name);
         assert.ok(task?.enabled, `${name} should define enabled()`);
 
