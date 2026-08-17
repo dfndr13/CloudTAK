@@ -43,9 +43,9 @@
                 <div class='row'>
                     <div class='col-lg-12'>
                         <TablerInput
-                            v-model='config["media::internal_url"]'
+                            v-model='config["media::internal::url"]'
                             :disabled='!edit'
-                            :error='validateOptionalURL(config["media::internal_url"])'
+                            :error='validateOptionalURL(config["media::internal::url"])'
                             label='Internal Media URL'
                             description='Used by CloudTAK for service-to-service media API calls.'
                             placeholder='http://mediamtx:9997'
@@ -53,9 +53,9 @@
                     </div>
                     <div class='col-lg-12 mt-3'>
                         <TablerInput
-                            v-model='config["media::public_url"]'
+                            v-model='config["media::public::url"]'
                             :disabled='!edit'
-                            :error='validateOptionalURL(config["media::public_url"])'
+                            :error='validateOptionalURL(config["media::public::url"])'
                             label='Public Media URL'
                             description='Used for browser-facing playback URLs and lease metadata.'
                             placeholder='https://video.ksutak.org'
@@ -142,8 +142,8 @@ import {
 
 interface MediaConfig {
     'media::url': string;
-    'media::internal_url': string;
-    'media::public_url': string;
+    'media::internal::url': string;
+    'media::public::url': string;
     'media::proxy::allow': string[];
 }
 
@@ -154,8 +154,8 @@ const err = ref<Error | null>(null);
 
 const config = ref<MediaConfig>({
     'media::url': '',
-    'media::internal_url': '',
-    'media::public_url': '',
+    'media::internal::url': '',
+    'media::public::url': '',
     'media::proxy::allow': [],
 });
 
@@ -193,12 +193,12 @@ async function fetch(): Promise<void> {
         });
         if (error) throw new Error(error.message);
         const legacy = data['media::url'] ?? '';
-        const internal = data['media::internal_url'] ?? legacy;
-        const publicUrl = data['media::public_url'] ?? legacy ?? internal;
+        const internal = data['media::internal::url'] ?? legacy;
+        const publicUrl = data['media::public::url'] ?? legacy ?? internal;
         config.value = {
             'media::url': legacy,
-            'media::internal_url': internal,
-            'media::public_url': publicUrl,
+            'media::internal::url': internal,
+            'media::public::url': publicUrl,
             'media::proxy::allow': data['media::proxy::allow'] ?? [],
         };
     } catch (error) {
@@ -213,9 +213,9 @@ async function save(): Promise<void> {
     try {
         const { error } = await server.PUT('/api/config', {
             body: {
-                'media::url': config.value['media::public_url'].trim(),
-                'media::internal_url': config.value['media::internal_url'].trim(),
-                'media::public_url': config.value['media::public_url'].trim(),
+                'media::url': config.value['media::public::url'].trim(),
+                'media::internal::url': config.value['media::internal::url'].trim(),
+                'media::public::url': config.value['media::public::url'].trim(),
                 'media::proxy::allow': config.value['media::proxy::allow'],
             }
         });
