@@ -86,10 +86,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid Video Stream URL');
                 }
 
-                const media = await videoControl.url();
                 const uuid = requested.pathname.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
 
-                if (media && media.hostname === requested.hostname && uuid && uuid[0]) {
+                if (await videoControl.isOwnHostname(requested.hostname) && uuid && uuid[0]) {
                     try {
                         lease = (await videoControl.from(uuid[0], {
                             username: user.email,

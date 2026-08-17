@@ -17,6 +17,7 @@
 
 ### Pending Release
 
+- :bug: Fix "Watch"/"Share" video actions reporting a live stream as offline when `media::playback_url` is configured - `VideoServiceControl` now recognizes stream URLs hosted on either `media::public_url` or `media::playback_url` as CloudTAK's own, instead of only matching `media::public_url` and falling through to (and failing) a redundant proxy-lease creation
 - :bug: Fix repeated HLS session churn during EUD video playback - `VideoPlayer.vue` now tries resuming the existing session before forcing a full stream restart on a buffering stall, instead of forcing MediaMTX to mint a brand-new session (and restart its muxer) on every stall
 - :bug: Make `retention::replay::enabled` opt-in by default, consistent with the other retention tasks (previously defaulted to enabled)
 - :bug: Fix double-posted `Feature_Archived_Removed` worker message when deleting an archived CONNECTION-origin feature

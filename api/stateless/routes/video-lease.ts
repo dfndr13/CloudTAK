@@ -132,7 +132,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     leasable: false,
                     message: 'CloudTAK does not have a media server configured',
                 });
-            } else if (url.hostname !== requested.hostname) {
+            } else if (!(await videoControl.isOwnHostname(requested.hostname))) {
                 res.json({
                     leasable: true,
                     message: 'CloudTAK has a media server provisioned and can attempt to serve the stream',
