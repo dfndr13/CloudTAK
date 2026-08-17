@@ -17,6 +17,11 @@
 
 ### Pending Release
 
+- :bug: Fix repeated HLS session churn during EUD video playback - `VideoPlayer.vue` now tries resuming the existing session before forcing a full stream restart on a buffering stall, instead of forcing MediaMTX to mint a brand-new session (and restart its muxer) on every stall
+- :bug: Make `retention::replay::enabled` opt-in by default, consistent with the other retention tasks (previously defaulted to enabled)
+- :bug: Fix double-posted `Feature_Archived_Removed` worker message when deleting an archived CONNECTION-origin feature
+- :bug: Ensure the Media Server admin config UI keeps the legacy `media::url` key in sync with `media::public_url` when saved, instead of leaving it stale
+
 ### v13.69.0 - 2026-08-15
 
 - :tada: Allow specifying a feature as a line vs a route on ETL layers - Closes: https://github.com/dfpc-coe/CloudTAK/issues/1666
