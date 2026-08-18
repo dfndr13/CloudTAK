@@ -671,7 +671,7 @@ export const FullConfig = Type.Object({
     'media::url': Type.String({ description: 'Legacy base URL for Media Service' }),
     'media::internal::url': Type.String({ description: 'Internal base URL for Media Service API calls' }),
     'media::public::url': Type.String({ description: 'Public base URL for Media Service playback and metadata' }),
-    'media::playback_url': Type.String({ description: 'Optional browser-facing base URL for HLS playback (e.g. a standard-port reverse proxy) when it differs from media::public::url. Falls back to media::public::url when unset.' }),
+    'media::playback::url': Type.String({ description: 'Optional browser-facing base URL for HLS playback (e.g. a standard-port reverse proxy) when it differs from media::public::url. Falls back to media::public::url when unset.' }),
     'media::proxy::allow': Type.Array(Type.String({ description: 'Trusted video proxy source hostname or origin (scheme + host + optional port) that is added to the SSRF allow-list' })),
     'coturn::url': Type.String({ description: 'COTURN Server URL' }),
     'coturn::secret': Type.String({ description: 'COTURN Server Secret' }),
