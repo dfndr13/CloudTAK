@@ -46,7 +46,7 @@ export const FullConfigDefaults: Partial<Static<typeof FullConfig>> = {
     'media::url': '',
     'media::internal::url': '',
     'media::public::url': '',
-    'media::playback_url': '',
+    'media::playback::url': '',
     'external::applications': [],
     'core::event::types': [],
 };

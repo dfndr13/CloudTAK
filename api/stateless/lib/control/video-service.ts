@@ -150,7 +150,7 @@ export default class VideoServiceControl {
      * The legacy media::url key is kept as a fallback until operators
      * have fully migrated to the split internal/public keys.
      */
-    private async settingValue(key: 'media::url' | 'media::internal::url' | 'media::public::url' | 'media::playback_url'): Promise<string | null> {
+    private async settingValue(key: 'media::url' | 'media::internal::url' | 'media::public::url' | 'media::playback::url'): Promise<string | null> {
         try {
             const kv = await this.config.models.Setting.from(key);
             return (typeof kv.value === 'string' && kv.value) ? kv.value : null;
@@ -172,7 +172,7 @@ export default class VideoServiceControl {
 
     // A client-provided stream URL may legitimately be hosted on either the
     // public media URL (media::public::url) or the separate HLS playback URL
-    // (media::playback_url, e.g. a reverse proxy on a standard port) - a
+    // (media::playback::url, e.g. a reverse proxy on a standard port) - a
     // stream is only "ours" if its hostname matches one of the two.
     async isOwnHostname(hostname: string): Promise<boolean> {
         const video = await this.settings();
@@ -194,7 +194,7 @@ export default class VideoServiceControl {
             this.settingValue('media::internal::url'),
             this.settingValue('media::url'),
             this.settingValue('media::public::url'),
-            this.settingValue('media::playback_url'),
+            this.settingValue('media::playback::url'),
         ]);
 
         const internal = internalValue || legacyValue;
@@ -412,7 +412,7 @@ export default class VideoServiceControl {
 
         if (c.config && c.config.hls) {
             // Format: http://localhost:9997/mystream/index.m3u8 - Proxied
-            // media::playback_url overrides the browser-facing host/port for HLS
+            // media::playback::url overrides the browser-facing host/port for HLS
             // playback (e.g. a standard-port reverse proxy for networks that block
             // the media server's dedicated port) while media::public::url continues
             // to describe the media server's own address for everything else.

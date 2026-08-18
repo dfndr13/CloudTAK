@@ -197,12 +197,12 @@ test('PATCH: api/video/lease/:lease - Update Lease', async () => {
     }
 });
 
-test('GET: api/video/active - resolves a lease reached via media::playback_url hostname', async () => {
+test('GET: api/video/active - resolves a lease reached via media::playback::url hostname', async () => {
     if (!flight.config) throw new Error('Flight config not initialized');
 
     try {
         await flight.config.models.Setting.generate({
-            key: 'media::playback_url',
+            key: 'media::playback::url',
             value: 'http://playback.example.com',
         });
     } catch (err) {
@@ -234,7 +234,7 @@ test('GET: api/video/active - resolves a lease reached via media::playback_url h
         }, true);
 
         assert.equal(res.status, 200, 'Status 200');
-        // A hostname matching media::playback_url (rather than media::public::url)
+        // A hostname matching media::playback::url (rather than media::public::url)
         // must still be recognized as CloudTAK's own - resolving to the lease's
         // real metadata instead of falling through to the generic "leasable"
         // response with no metadata (the bug this test guards against).

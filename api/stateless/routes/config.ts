@@ -15,8 +15,8 @@ function withMediaFallback(
     keys: (keyof Static<typeof FullConfig>)[],
 ): Partial<Static<typeof FullConfig>> {
     const legacy = config['media::url'];
-    const internal = config['media::internal::url'] || legacy || config['media::public::url'];
-    const publicUrl = config['media::public::url'] || legacy || config['media::internal::url'];
+    const internal = config['media::internal::url'] || legacy;
+    const publicUrl = config['media::public::url'] || legacy;
 
     if (keys.includes('media::internal::url') && internal !== undefined) {
         config['media::internal::url'] = internal;
