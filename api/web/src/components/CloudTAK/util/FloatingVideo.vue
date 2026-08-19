@@ -100,7 +100,7 @@ import VideoLeaseSourceType from './VideoLeaseSourceType.vue';
 import FloatingPane from './FloatingPane.vue';
 import VideoPlayer from '../../util/VideoPlayer.vue';
 import type { VideoPlayerMetadata } from '../../util/VideoPlayer.vue';
-import { notifyVideoWall } from '../../../lib/video-wall.ts';
+import { notifyVideoWall, VIDEO_WALL_WINDOW } from '../../../lib/video-wall.ts';
 import { isNativePlatform } from '../../../utils/capacitor.ts';
 import { useFloatStore } from '../../../stores/float.ts';
 import type { Pane, PaneVideoConfig } from '../../../stores/float.ts';
@@ -154,6 +154,11 @@ async function pushToWall(): Promise<void> {
     pushing.value = true;
     pushError.value = undefined;
 
+    // Reserve/reuse the Video Wall window synchronously, inside this click's
+    // user gesture, so the browser doesn't block window.open() once the
+    // async work below resolves.
+    const preOpened = window.open('', VIDEO_WALL_WINDOW);
+
     try {
         await std('/api/profile/video', {
             method: 'POST',
@@ -163,7 +168,7 @@ async function pushToWall(): Promise<void> {
             }
         });
 
-        await notifyVideoWall();
+        await notifyVideoWall(preOpened);
 
         emit('close');
     } catch (err) {
