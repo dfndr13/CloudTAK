@@ -74,3 +74,30 @@ Called from `start_webeditor.sh` on every service start (`systemd` unit runs as
 3. Replace this directory's `*.orig` with the new upstream file, and
    `*.patched` with the new upstream file plus the re-derived fix applied.
 4. Restart the service to confirm `apply-patches.sh` now no-ops cleanly.
+
+## Incident: this actually happened (2026-08-18)
+
+The web editor self-updated (`CURRENT_VERSION` `v2.1.3` -> `v2.1.4`) sometime
+between 2026-08-17 17:57 and 2026-08-18 20:25, which shipped different code
+around `is_hls_localhost_bound()` - byte comparison against the old `*.orig`/
+`*.patched` snapshots correctly stopped matching, and `apply-patches.sh`
+FATAL'd exactly as designed, on every restart from 20:25 onward (4 restarts).
+
+**But it kept running unpatched anyway.** `start_webeditor.sh` has no `set -e`
+and never checks `apply-patches.sh`'s exit code (its final call, no `|| exit 1`
+guard) - so the FATAL printed to the log, and the wrapper's very next line
+unconditionally echoed `"Patches applied. Starting web editor..."` and
+launched the app regardless. The safety net detected the problem correctly;
+nothing was listening to it. Fixed by adding `set -e` to the top of
+`start_webeditor.sh`.
+
+Symptom this produced: the web editor's "Watch" button opened a popup that
+spun forever with no error - `is_hls_localhost_bound()` had reverted to
+checking the raw YAML `hlsAddress` value (`:8888`, not literally
+`127.0.0.1`), so HLS URLs were built as direct `https://host:8888/...` links
+instead of `/hls-proxy/...`, and that direct port isn't actually reachable in
+this bridge-networked setup - exactly bug #1 above, recurring.
+
+`*.orig`/`*.patched` in this directory were regenerated from the live
+`v2.1.4` file on 2026-08-18 to restore a clean baseline that `apply-patches.sh`
+can byte-match against going forward.
