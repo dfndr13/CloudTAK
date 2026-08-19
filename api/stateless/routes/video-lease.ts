@@ -6,6 +6,7 @@ import Err from '@openaddresses/batch-error';
 import Auth, { AuthUserAccess, AuthUser, AuthResource, AuthResourceAccess } from '../../common/auth.js';
 import type ConfigStateless from '../config.js';
 import { sql } from 'drizzle-orm';
+import { GenericListOrder } from '@openaddresses/batch-generic';
 import { randomUUID } from 'node:crypto';
 import { StandardResponse, VideoLeaseResponse } from '../../common/types.js';
 import { VideoLease_SourceType, AllBoolean, AllBooleanCast } from '../../common/enums.js';
@@ -133,10 +134,45 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     message: 'CloudTAK does not have a media server configured',
                 });
             } else if (!(await videoControl.isOwnHostname(requested.hostname))) {
-                res.json({
-                    leasable: true,
-                    message: 'CloudTAK has a media server provisioned and can attempt to serve the stream',
+                // The requested URL is an external/proxy source (eg a CoT's raw camera URL).
+                // Reuse an existing lease for this exact proxy URL if this user already has one,
+                // rather than blindly reporting leasable and letting the caller mint a fresh
+                // ephemeral lease (and MediaMTX path) on every open/reconnect.
+                const existing = await config.models.VideoLease.list({
+                    limit: 1,
+                    order: GenericListOrder.ASC,
+                    sort: 'ephemeral', // Prefer a persistent (ephemeral=false) lease over ephemeral duplicates
+                    where: sql`
+                        proxy = ${req.query.url}
+                        AND username = ${user.email}
+                        AND (expiration IS NULL OR expiration > Now())
+                    `,
                 });
+
+                if (existing.items.length) {
+                    const lease = existing.items[0];
+                    const path = await videoControl.path(lease.path);
+                    const protocols = await videoControl.protocols(lease, ProtocolPopulation.READ);
+
+                    res.json({
+                        leasable: false,
+                        metadata: {
+                            name: lease.name,
+                            username: lease.username,
+                            active: path.ready,
+                            watchers: path.readers.length,
+                            source_id: lease.source_id,
+                            source_type: lease.source_type,
+                            source_model: lease.source_model || '',
+                            protocols,
+                        },
+                    });
+                } else {
+                    res.json({
+                        leasable: true,
+                        message: 'CloudTAK has a media server provisioned and can attempt to serve the stream',
+                    });
+                }
             } else if (!uuid || !uuid[0]) {
                 res.json({
                     leasable: true,
