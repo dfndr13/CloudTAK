@@ -364,32 +364,6 @@ export default class AtlasConnection {
                     } else {
                         console.log('No Service Worker available');
                     }
-                } else {
-                    if ('serviceWorker' in self.navigator) {
-                        const regs = await self.navigator.serviceWorker.getRegistrations()
-
-                        if (!regs.some(reg => {
-                            try {
-                                const scriptURL = reg.active?.scriptURL;
-                                if (!scriptURL) {
-                                    return false;
-                                }
-                                const url = new URL(scriptURL);
-                                return url.searchParams.get('v') === status.version;
-                            } catch (err) {
-                                console.error('Error parsing service worker script URL', err);
-                                return false;
-                            }
-                        })) {
-                            console.log(`Service Worker out of date, updating to version ${status.version}`);
-                            const registration = await self.navigator.serviceWorker.ready;
-                            registration.update().catch((err) => {
-                                console.debug('Failed to update ServiceWorker (likely unregistered):', err);
-                            });
-                        }
-                    } else {
-                        console.log('No Service Worker available');
-                    }
                 }
             } else if (body.type === 'sync') {
                 // Another of the user's connected clients mutated a data type
