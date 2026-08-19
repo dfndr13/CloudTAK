@@ -1,6 +1,9 @@
 # media-infra container patches
 
-`cloudtak-media-1` runs `ghcr.io/dfpc-coe/media-infra:v9.11.0` — a third-party image.
+**PINNED AT `v9.9.0`, NOT `v9.11.0` — see "2026-08-19 regression and downgrade"
+below before bumping this again.**
+
+`cloudtak-media-1` runs `ghcr.io/dfpc-coe/media-infra:v9.9.0` — a third-party image.
 There's no local source checkout for it in this repo, so two bugs found and fixed
 here on 2026-08-05 can't be fixed "properly" in source. Instead, `apply-patches.sh`
 patches the compiled files inside the container at every startup, before the app
@@ -104,6 +107,63 @@ directory bind-mounted read-only at `/patches`. On every container start, before
 - Else → **fails loudly and refuses to touch the file.** This means the image was
   updated and shipped different code in that file — the patch can no longer be
   trusted to apply correctly and needs human review, not a blind overwrite.
+
+## 2026-08-19 regression and downgrade
+
+The bump to `v9.11.0` on 2026-08-11 (see git history) was live for about a
+week. During that week, live video playback on at least one real EUD-backed
+CoT ("Halton" - phone publishing H264 + mono 44.1kHz AAC over cellular)
+degraded from working fine to persistent audio-track stuttering
+(`bufferAppendNoProgress` in hls.js, browser MediaSource-level, not visible
+in VLC or via ffprobe of the actual segments - both the raw RTSP source and
+the muxed HLS segments have perfectly clean, gapless PTS). Extensive
+same-night investigation (see [[project-cloudtak-video-open-issues]] for the
+full trail) ruled out: the client hls.js config (unchanged for 3+ weeks),
+CloudTAK's own error-recovery logic (reproduced identically with zero
+CloudTAK code running, an isolated test page), the source itself, and the
+muxer's segment-boundary timestamps. Two specific known-upstream-bug
+candidates were checked and ruled inapplicable:
+
+- A MediaMTX recorder drift-reset bug (bluenviron/mediamtx#5810, matches our
+  exact audio profile and "phone over cellular" scenario) - but the affected
+  code (`internal/recorder/format_fmp4_track.go` /
+  `format_mpegts_track.go`) only runs when *recording* is enabled. Our
+  leases have `recording: false`; this code path isn't reachable for us.
+- MediaMTX v1.20.0's HLS changelog entry "recompute PTS of MPEG-TS AAC"
+  (bluenviron/gohlslib#379) - also a strong-looking match (AAC-specific,
+  landed in the exact version media-infra v9.11.0 pulled in), but the actual
+  diff shows the new resync logic (`mpegtsAACPTS` et al) is explicitly
+  MPEG-TS-only (`// mpegts only` in the source). We run `hlsVariant: fmp4`
+  (media-infra's own v9.10.0 default), so this code path isn't reachable for
+  us either. Switching `hlsVariant` to `mpegts` to test made things
+  measurably worse ("way worse, stuck") - very plausibly because that
+  exercises this brand-new, less battle-tested v1.20.0 code path instead of
+  helping.
+
+No single line has been conclusively identified as the cause. What *is*
+conclusively established: **downgrading the whole image from `v9.11.0` back
+to `v9.9.0` (MediaMTX v1.19.3, pre-dating the fMP4-pin and the AAC-PTS
+change) resolved it** - confirmed by the user watching live playback both
+before and after the downgrade, same stream, same session, no other
+variables changed. This is an empirical result, not a root-caused fix -
+treat it as such.
+
+**Consequences of staying on `v9.9.0`:** we lose whatever `v9.10.0`/`v9.11.0`
+actually fixed upstream for other cases - notably the `ephemeral=all` lease
+sync fix (harmless to lose, our own `persist.js` patch below covers it
+regardless) and misc RTSP/RTMP/WebRTC/SRT fixes unrelated to our setup (see
+the v1.20.0 MediaMTX changelog for the full list, referenced in this
+session's chat history). `*.orig`/`*.patched` here were already originally
+derived against `v9.9.0`, so both patches apply exactly as before with no
+changes needed - this downgrade required zero changes to this directory.
+
+**Before ever bumping past `v9.9.0` again:** reproduce this exact scenario
+(EUD/mobile source, mono low-bitrate AAC audio, real cellular network
+jitter, several minutes of continuous playback, browser devtools console
+open watching for `bufferAppendNoProgress`) against the new version *before*
+rolling it out, not after. A quiet few-minute smoke test at deploy time
+would not have caught this - it took a live camera under real network
+conditions and sustained watching to surface.
 
 ## If this fails after a media-infra version bump
 
