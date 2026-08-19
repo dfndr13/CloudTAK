@@ -39,13 +39,21 @@ export function isVideoWallOpen(timeout = 500): Promise<boolean> {
 
 /**
  * Notify an open Video Wall that its contents have changed, or open a new
- * Video Wall tab if one isn't open
+ * Video Wall tab if one isn't open.
+ *
+ * `preOpenedWindow`, when given, must have been opened synchronously inside
+ * the triggering user gesture (eg `window.open('', VIDEO_WALL_WINDOW)` in a
+ * click handler) - browsers block `window.open()` calls made after an
+ * `await`, so this lets the caller reserve the window/tab up front and have
+ * it navigated here once the async work (or wall-open check) resolves.
  */
-export async function notifyVideoWall(): Promise<void> {
+export async function notifyVideoWall(preOpenedWindow?: Window | null): Promise<void> {
     if (await isVideoWallOpen()) {
         const channel = new BroadcastChannel('cloudtak');
         channel.postMessage({ type: WorkerMessageType.VideoWall_Refresh });
         channel.close();
+    } else if (preOpenedWindow) {
+        preOpenedWindow.location.href = VIDEO_WALL_PATH;
     } else {
         window.open(VIDEO_WALL_PATH, VIDEO_WALL_WINDOW);
     }
