@@ -10,6 +10,17 @@ import postgres from 'postgres';
  * to dropping everything so the subsequent migration run starts clean.
  */
 export default async function drop(connstr: string) {
+    if (process.env.ALLOW_TEST_DB_RESET !== 'true') {
+        throw new Error(
+            'Refusing to reset database: ALLOW_TEST_DB_RESET=true is not set. '
+            + 'This function TRUNCATEs (or DROPs) every table in the target database - '
+            + 'it must never run against a real database, even by accident (e.g. a local '
+            + '`docker compose`/`docker run` invocation resolving to a real running stack '
+            + 'via a shared network/container name). Set ALLOW_TEST_DB_RESET=true only when '
+            + 'POSTGRES points at a disposable test database.',
+        );
+    }
+
     const client = postgres(connstr, {
         onnotice: () => {},
     });
