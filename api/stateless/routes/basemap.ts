@@ -888,7 +888,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 const url = new URL(basemap.tilejson);
 
                 if (url.hostname === new URL(config.PMTILES_URL).hostname) {
-                    url.searchParams.set('token', auth.token);
+                    // auth.token carries the `etl.` prefix used within CloudTAK's own
+                    // API; the pmtiles service verifies a bare JWT and doesn't strip it.
+                    url.searchParams.set('token', auth.token.replace(/^etl\./, ''));
                 } else {
                     // Skip isSafeUrl check when StackName=test (test mode)
                     if (process.env.StackName !== 'test') {
@@ -919,7 +921,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 // URL.pathname percent-encodes the `{z}/{x}/{y}` template braces to
                 // `%7B`/`%7D`, so decode before stripping the tile-coordinate segment.
                 tilejsonUrl.pathname = decodeURIComponent(parsedUrl.pathname).replace(/\/tiles\/\{[^}]+\}.*$/, '');
-                tilejsonUrl.searchParams.set('token', auth.token);
+                // auth.token carries the `etl.` prefix used within CloudTAK's own
+                // API; the pmtiles service verifies a bare JWT and doesn't strip it.
+                tilejsonUrl.searchParams.set('token', auth.token.replace(/^etl\./, ''));
 
                 const tj = await fetch(tilejsonUrl);
                 if (!tj.ok) {
