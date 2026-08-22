@@ -909,6 +909,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
                 res.json({
                     ...json,
+                    // The external tilejson response has no notion of tileSize (not part
+                    // of the TileJSON spec). MapLibre defaults raster sources to 512px,
+                    // but pmtiles-hosted raster tiles here are always 256px, so without
+                    // this every tile renders at 2x its correct on-screen size.
+                    tileSize: basemap.tilesize,
                     type: basemap.type,
                     actions: fromProtocol(basemap.protocol, basemap).actions(),
                 });
