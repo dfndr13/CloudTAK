@@ -16,7 +16,25 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
         super(pool, Basemap);
     }
 
+    /**
+     * MapLibre GL JS (confirmed on v6.3.0) never requests a single tile for a
+     * raster/raster-dem source whose minzoom === maxzoom - the source silently
+     * loads with nothing rendered, no error emitted. A basemap covering only one
+     * real zoom level (e.g. a single-resolution offline imagery import) must
+     * still declare a non-degenerate range so MapLibre has zoom levels to clamp
+     * requests into.
+     */
+    #normalizeZoomRange(minzoom: number | undefined, maxzoom: number | undefined): { minzoom: number | undefined; maxzoom: number | undefined } {
+        if (typeof minzoom === 'number' && typeof maxzoom === 'number' && minzoom === maxzoom) {
+            return { minzoom, maxzoom: maxzoom + 4 };
+        }
+
+        return { minzoom, maxzoom };
+    }
+
     async generate(input: any): Promise<any> {
+        const { minzoom, maxzoom } = this.#normalizeZoomRange(input.minzoom, input.maxzoom);
+
         const base = await super.generate({
             parent: input.parent,
             name: input.name,
@@ -24,8 +42,8 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
             protocol: input.protocol,
             bounds: input.bounds,
             center: input.center,
-            minzoom: input.minzoom,
-            maxzoom: input.maxzoom,
+            minzoom,
+            maxzoom,
             format: input.format,
             type: input.type,
             username: input.username,
@@ -91,6 +109,8 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
     }
 
     async commit(id: number, input: any): Promise<any> {
+        const { minzoom, maxzoom } = this.#normalizeZoomRange(input.minzoom, input.maxzoom);
+
         const base = await super.commit(id, {
             parent: input.parent,
             name: input.name,
@@ -98,8 +118,8 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
             protocol: input.protocol,
             bounds: input.bounds,
             center: input.center,
-            minzoom: input.minzoom,
-            maxzoom: input.maxzoom,
+            minzoom,
+            maxzoom,
             format: input.format,
             type: input.type,
             username: input.username,
