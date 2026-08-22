@@ -915,6 +915,16 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     // this every tile renders at 2x its correct on-screen size.
                     tileSize: basemap.tilesize,
                     type: basemap.type,
+                    // The upstream tilejson reports the PMTiles archive's raw native zoom
+                    // range, which is degenerate (minzoom === maxzoom) for a basemap tiled
+                    // at a single resolution. BasemapModel already widens maxzoom for this
+                    // case at write time so MapLibre has a non-degenerate range to clamp
+                    // requests into - reapply those stored values here rather than
+                    // forwarding the raw archive range, otherwise this branch bypasses that
+                    // fix entirely and MapLibre gets the degenerate range straight from the
+                    // archive header.
+                    minzoom: basemap.minzoom ?? json.minzoom,
+                    maxzoom: basemap.maxzoom ?? json.maxzoom,
                     actions: fromProtocol(basemap.protocol, basemap).actions(),
                 });
             } else if (basemap.url.includes(new URL(config.PMTILES_URL || 'http://localhost:5001').hostname)) {
@@ -940,6 +950,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     ...tjJson,
                     type: basemap.type,
                     tiles: [tileURL],
+                    // See the equivalent override above: reapply the stored (already
+                    // widened for a degenerate range) zoom bounds instead of forwarding
+                    // the PMTiles archive's raw native zoom range.
+                    minzoom: basemap.minzoom ?? tjJson.minzoom,
+                    maxzoom: basemap.maxzoom ?? tjJson.maxzoom,
                     actions: fromProtocol(basemap.protocol, basemap).actions(),
                 });
             } else {

@@ -71,20 +71,32 @@ export default class Overlay {
         } = {}
     ): Promise<Overlay> {
         if (opts.skipSave !== true) {
+            // A basemap-derived template style (e.g. a vector basemap's stored
+            // circle/line/fill layers) can't carry a real `source` yet - that's
+            // this overlay's own row id, which doesn't exist until after create.
+            // Sending it as-is in the create POST fails the server's style
+            // validation (source is required) before we ever get an id to fill
+            // it in with. So create the row without styles first, then prepare
+            // the template (id-prefixed, source filled in) against the real id
+            // and PATCH it in.
+            const templateStyles = body.styles;
+
             let ov = await std('/api/profile/overlay', {
                 method: 'POST',
-                body
+                body: { ...body, styles: undefined }
             }) as ProfileOverlay;
 
-            if (ov.styles && ov.styles.length) {
-                for (const layer of ov.styles) {
-                    const l = layer as LayerSpecification;
+            if (templateStyles && templateStyles.length) {
+                ov.styles = templateStyles.map((layer) => {
+                    const l = { ...(layer as LayerSpecification) };
                     l.id = `${ov.id}-${l.id}`;
 
                     if (l.type !== 'background') {
-                        l.source = String(ov.id);
+                        (l as { source?: string }).source = String(ov.id);
                     }
-                }
+
+                    return l;
+                });
             }
 
             ov = await std(`/api/profile/overlay/${ov.id}`, {
@@ -546,7 +558,13 @@ export default class Overlay {
         if (overlay.actions) this.actions = overlay.actions || { feature: [] };
         if (overlay.type) this.type = overlay.type;
 
-        if (this.type === 'raster' && oldType !== 'raster' && !overlay.styles) {
+        // Most basemaps (raster ones especially) have no stored styles, so the
+        // caller passes none here and this.styles is left holding whatever
+        // layer shapes the *previous* type used. Reset it whenever the type
+        // actually changes so init()'s `!this.styles.length` branches
+        // regenerate the correct layer shape for the new type, instead of
+        // handing a stale raster/vector/geojson layer to a mismatched source.
+        if (overlay.type && overlay.type !== oldType && !overlay.styles) {
             this.styles = [];
         }
 
