@@ -15154,6 +15154,8 @@ def get_dashboard_metrics():
                 streams_list = []
                 
                 if 'items' in paths_data:
+                    all_path_names = {p.get('name', '') for p in paths_data['items']}
+
                     # Build a map of live/ paths (subtract 1 for internal FFmpeg)
                     live_paths = {}
                     for path in paths_data['items']:
@@ -15167,28 +15169,45 @@ def get_dashboard_metrics():
                                 live_paths[stream_name] = live_readers
                             else:
                                 live_paths[stream_name] = max(0, (readers_data or 0) - 1)
-                    
+
+                    # '<stream>_hls' re-encode sidecars: real viewers connect to
+                    # the sidecar; the base path's only reader is the internal
+                    # re-encode ffmpeg. Count the sidecar's readers as the base
+                    # stream's viewers and skip the sidecar as its own stream.
+                    sidecar_readers = {}
+                    for path in paths_data['items']:
+                        n = path.get('name', '')
+                        if n.endswith('_hls') and n[:-4] in all_path_names:
+                            rd = path.get('readers', [])
+                            sidecar_readers[n[:-4]] = len(rd) if isinstance(rd, list) else (rd or 0)
+
                     # Process main paths and add live/ viewers
                     for path in paths_data['items']:
                         path_name = path.get('name', '')
-                        # Skip internal paths and live/ paths
-                        if path_name and path_name != 'all' and not path_name.startswith('live/'):
+                        # Skip internal paths, live/ paths, and *_hls sidecars
+                        if path_name and path_name != 'all' and not path_name.startswith('live/') \
+                                and not (path_name.endswith('_hls') and path_name[:-4] in all_path_names):
                             # Count streams that are ready (have active source)
                             if path.get('ready', False):
                                 active_streams += 1
-                                readers_data = path.get('readers', [])
-                                # readers can be a list (count length) or int (use directly)
-                                if isinstance(readers_data, list):
-                                    readers = len(readers_data)
+                                if path_name in sidecar_readers:
+                                    # base of a re-encode pair: own readers are
+                                    # the encoder; real viewers are on the sidecar
+                                    readers = sidecar_readers[path_name]
                                 else:
-                                    readers = readers_data or 0
-                                
+                                    readers_data = path.get('readers', [])
+                                    # readers can be a list (count length) or int
+                                    if isinstance(readers_data, list):
+                                        readers = len(readers_data)
+                                    else:
+                                        readers = readers_data or 0
+
                                 # Add live/ viewers (minus FFmpeg)
                                 if path_name in live_paths:
                                     readers += live_paths[path_name]
-                                
+
                                 total_viewers += readers
-                                
+
                                 streams_list.append({
                                     'name': path_name,
                                     'readers': readers,
