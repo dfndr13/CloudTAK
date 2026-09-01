@@ -8985,8 +8985,9 @@ def api_streams():
             
             for item in data.get('items', []):
                 path_name = item.get('name', '')
-                # Skip internal relay streams and 'all' path
-                if path_name and path_name != 'all' and not path_name.startswith('live/'):
+                # Skip internal relay streams, 'all', and *_hls re-encode siblings
+                if path_name and path_name != 'all' and not path_name.startswith('live/') \
+                        and not (path_name.endswith('_hls') and path_name[:-4] in available_paths):
                     stream_info = {
                         'name': path_name,
                         'readers': 0,  # Will update from detail call
