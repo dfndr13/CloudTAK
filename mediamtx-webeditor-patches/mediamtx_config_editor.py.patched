@@ -6063,9 +6063,9 @@ HTML_TEMPLATE = '''
                                         // 2xx is not proof of playback. Require actual frames.
                                         setTimeout(function() {
                                             if (settled) return;
-                                            if (!video.videoWidth) fail('no video within 6s');
+                                            if (!video.videoWidth) fail('no video within 12s');
                                             else settled = true;
-                                        }, 6000);
+                                        }, 12000);
                                         pc.createOffer().then(function(offer) {
                                             return pc.setLocalDescription(offer).then(function() { return offer; });
                                         }).then(function(offer) {
@@ -14699,7 +14699,7 @@ pc.ontrack=function(ev){{dbg("ontrack kind="+ev.track.kind+" streams="+((ev.stre
 if(ev.streams&&ev.streams[0]){{if(video.srcObject!==ev.streams[0])video.srcObject=ev.streams[0];}}else{{ms.addTrack(ev.track);if(video.srcObject!==ms)video.srcObject=ms;}}err.style.display="none";
 video.play().then(function(){{dbg("play() ok");}}).catch(function(e){{dbg("play() BLOCKED: "+(e.name||e)+" - tap the video");}});}};
 pc.onconnectionstatechange=function(){{if(pc&&(pc.connectionState==="failed"||pc.connectionState==="closed"))fail("connection "+pc.connectionState);}};
-setTimeout(function(){{if(done)return;if(!video.videoWidth)fail("no video within 6s");else done=true;}},6000);
+setTimeout(function(){{if(done)return;if(!video.videoWidth)fail("no video within 12s");else done=true;}},12000);
 pc.createOffer().then(function(o){{return pc.setLocalDescription(o).then(function(){{return o;}});}})
 .then(function(o){{return fetch(whep,{{method:"POST",headers:{{"Content-Type":"application/sdp"}},body:o.sdp}});}})
 .then(function(r){{if(!r.ok)throw new Error("WHEP HTTP "+r.status);return r.text();}})
