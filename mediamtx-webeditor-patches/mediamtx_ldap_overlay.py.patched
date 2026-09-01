@@ -201,9 +201,18 @@ def apply_ldap_overlay(app):
 
     # ── Shared stream links (token-based, no login required) ────────────
 
+    # Paths whose native codec structure can't be HLS-muxed (e.g. ksu/ebee:
+    # eBee H264 has no recurring keyframes) are re-encoded by MediaMTX
+    # runOnReady into a '<path>_hls' sibling. Serve HLS from that sibling.
+    _HLS_REMAP = {'ksu/ebee': 'ksu/ebee_hls'}
+
     def _hls_fetch(subpath):
         """Internal: fetch HLS content from MediaMTX with credentials.
         Uses urllib (no cookie jar) so MediaMTX uses URL-based session mode (v1.18+)."""
+        for _src, _dst in _HLS_REMAP.items():
+            if subpath == _src or subpath.startswith(_src + '/'):
+                subpath = _dst + subpath[len(_src):]
+                break
         url = f'http://127.0.0.1:8980/{subpath}'
         req = urllib.request.Request(url, headers={"Authorization": "Bearer ebe0d03dd672c018772282012beed7ea325a7f4c037aac22bf69907beb744ce8"})
         try:
@@ -344,8 +353,11 @@ start();
             items = data.get('items') or []
             vis = _load_visibility()
             streams = []
+            _all_names = {(q.get('name') or q.get('confName') or '') for q in items}
             for p in items:
                 name = p.get('name') or p.get('confName') or ''
+                if name.endswith('_hls') and name[:-4] in _all_names:
+                    continue
                 agency_abbr = session.get('agency_abbreviation', '')
                 is_global_admin = session.get('role') == 'admin'
                 if not is_global_admin and agency_abbr and not name.upper().startswith(agency_abbr.upper() + '/'):
