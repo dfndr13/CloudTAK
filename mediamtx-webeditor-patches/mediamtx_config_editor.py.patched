@@ -14722,6 +14722,11 @@ def shared_hls_proxy(token, subpath):
         return 'Link expired', 403
     if not subpath.startswith(info['stream']):
         return 'Forbidden', 403
+    # Serve from the '<stream>_hls' re-encode sidecar when one exists -- a raw
+    # keyframe-less path never produces a manifest, so this route would 502.
+    sidecar = _hls_sidecar_path(info['stream'])
+    if sidecar != info['stream']:
+        subpath = sidecar + subpath[len(info['stream']):]
     try:
         data, ct = hls_fetch_for_share(subpath, request.query_string)
         r = Response(data, content_type=ct)
@@ -14759,6 +14764,25 @@ def api_share_mode_set():
     except Exception as e:
         return jsonify({'error': str(e)[:200]}), 500
 
+def _hls_sidecar_path(stream):
+    """If '<stream>_hls' is a configured MediaMTX path, return that, else
+    return stream unchanged. Keyframe-less sources (eBee: one IDR at broadcast
+    start then an infinite GOP) can't be HLS/WebRTC-muxed directly; mediamtx.yml
+    re-encodes them into a '<path>_hls' runOnDemand sidecar. Central so
+    /hls-proxy (overlay), /shared-hls and WHEP all agree on the swap."""
+    if not stream or stream.endswith('_hls'):
+        return stream
+    try:
+        import urllib.request
+        with urllib.request.urlopen(
+                f'http://127.0.0.1:9898/v3/config/paths/get/{stream}_hls', timeout=3) as r:
+            if r.status == 200:
+                return stream + '_hls'
+    except Exception:
+        pass
+    return stream
+
+
 def whep_negotiate(stream, sdp_offer):
     """Forward an SDP offer to MediaMTX's WHEP endpoint, return (answer, error).
 
@@ -14783,19 +14807,7 @@ def whep_negotiate(stream, sdp_offer):
     if not re.match(r'^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$', stream) or '..' in stream.split('/'):
         return None, 'Invalid stream name'
     try:
-        # Keyframe-less sources (eBee: one IDR at broadcast start, then an
-        # infinite GOP) can't be WebRTC/HLS-muxed directly -- a late
-        # subscriber never gets a keyframe and renders nothing. mediamtx.yml
-        # re-encodes such a path into a '<path>_hls' runOnDemand sidecar;
-        # negotiate against that instead when it exists.
-        if not stream.endswith('_hls'):
-            try:
-                with urllib.request.urlopen(
-                        f'http://127.0.0.1:9898/v3/config/paths/get/{stream}_hls', timeout=3) as _r:
-                    if _r.status == 200:
-                        stream = stream + '_hls'
-            except Exception:
-                pass
+        stream = _hls_sidecar_path(stream)  # keyframe-bearing re-encode sidecar, if configured
         enc = str(read_yaml_field('webrtcEncryption', 'no')).lower() in ('yes', 'true')
         port = str(read_yaml_field('webrtcAddress', ':8887')).split(':')[-1] or '8887'
         url = f"{'https' if enc else 'http'}://127.0.0.1:{port}/{stream}/whep"
