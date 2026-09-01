@@ -5919,9 +5919,16 @@ HTML_TEMPLATE = '''
             // Resolve relative URL to absolute so the popup (about:blank) can fetch it
             const absoluteUrl = isProxied ? (window.location.origin + streamUrl) : streamUrl;
 
-            // Stream name = second-to-last path segment (.../<name>/index.m3u8)
-            const urlParts = absoluteUrl.split('/');
-            const streamName = urlParts.length >= 2 ? urlParts[urlParts.length - 2] : 'stream';
+            // Stream name = full path between the HLS mount and /index.m3u8,
+            // KEEPING any "agency/stream" namespace. (Was: last segment only,
+            // which silently dropped the namespace and broke WHEP for every
+            // namespaced path.)
+            let streamName = absoluteUrl
+                .replace(/^.*\/hls-proxy\//, '')       // proxied form
+                .replace(/^https?:\/\/[^/]+\//, '')    // direct form: strip scheme+host
+                .replace(/\/index\.m3u8.*$/, '')        // drop trailing manifest + query
+                .replace(/^\/+/, '');
+            if (!streamName) streamName = 'stream';
 
             // playbackConfig is loaded once at page load; default to HLS so a
             // failed/absent fetch can never take the watch button offline.
@@ -5930,7 +5937,7 @@ HTML_TEMPLATE = '''
             // same-origin (no CORS), session-authenticated, and it lets the
             // WebRTC port stay bound to localhost like HLS already is.
             const whepUrl = (playbackConfig && playbackConfig.webrtc_available)
-                ? window.location.origin + '/whep/' + encodeURIComponent(streamName)
+                ? window.location.origin + '/whep/' + streamName.split('/').map(encodeURIComponent).join('/')
                 : '';
 
             console.log('[Watch] Resolved URL:', absoluteUrl, '| proxied:', isProxied, '| mode:', playbackMode);
@@ -14770,9 +14777,25 @@ def whep_negotiate(stream, sdp_offer):
     import urllib.error
     import urllib.request
 
-    if not re.match(r'^[A-Za-z0-9_.-]+$', stream or ''):
+    stream = stream or ''
+    # Allow "agency/stream" namespaces: each slash-separated segment uses the
+    # same charset MediaMTX allows. Reject empty segments and '..' traversal.
+    if not re.match(r'^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$', stream) or '..' in stream.split('/'):
         return None, 'Invalid stream name'
     try:
+        # Keyframe-less sources (eBee: one IDR at broadcast start, then an
+        # infinite GOP) can't be WebRTC/HLS-muxed directly -- a late
+        # subscriber never gets a keyframe and renders nothing. mediamtx.yml
+        # re-encodes such a path into a '<path>_hls' runOnDemand sidecar;
+        # negotiate against that instead when it exists.
+        if not stream.endswith('_hls'):
+            try:
+                with urllib.request.urlopen(
+                        f'http://127.0.0.1:9898/v3/config/paths/get/{stream}_hls', timeout=3) as _r:
+                    if _r.status == 200:
+                        stream = stream + '_hls'
+            except Exception:
+                pass
         enc = str(read_yaml_field('webrtcEncryption', 'no')).lower() in ('yes', 'true')
         port = str(read_yaml_field('webrtcAddress', ':8887')).split(':')[-1] or '8887'
         url = f"{'https' if enc else 'http'}://127.0.0.1:{port}/{stream}/whep"
@@ -14799,7 +14822,7 @@ def whep_negotiate(stream, sdp_offer):
         return None, str(e)[:200]
 
 
-@app.route('/whep/<stream_name>', methods=['POST'])
+@app.route('/whep/<path:stream_name>', methods=['POST'])
 @login_required
 def whep_authenticated(stream_name):
     """WHEP for logged-in console users (Active Streams watch button)."""
