@@ -1938,7 +1938,7 @@ HTML_TEMPLATE = '''
                             <p class="help-text" style="margin: 8px 0 0 0;">Sub-second browser viewing. Video only &mdash; audio and KLV are not carried over WebRTC, so ATAK and CoT keep using RTSP/SRT.</p>
                         </div>
                     </div>
-                    <p class="help-text" style="margin-top: 15px;">Opens 8889/tcp (signalling) and 8189/udp (media). On a cloud box behind NAT, also set <strong>webrtcAdditionalHosts</strong> to the public IP in Advanced YAML, or viewers will be handed the private address and fail to connect.</p>
+                    <p class="help-text" style="margin-top: 15px;">Opens 8189/udp (media) only. WHEP signalling is proxied through the console &mdash; MediaMTX's WebRTC HTTP listener (:8887) is published on 127.0.0.1 and never exposed. On a cloud box behind NAT, also set <strong>webrtcAdditionalHosts</strong> to the public IP in Advanced YAML, or viewers will be handed the private address and fail to connect.</p>
                 </div>
                 
                 <form method="POST" action="/save_protocols">
@@ -2175,7 +2175,7 @@ HTML_TEMPLATE = '''
                     <div class="form-row">
                         <div class="form-group">
                             <label>WebRTC Port</label>
-                            <input type="number" name="webrtcAddress" value="{{ config.get('webrtcAddress', ':8889').split(':')[1] if ':' in config.get('webrtcAddress', ':8889') else '8889' }}" placeholder="8889">
+                            <input type="number" name="webrtcAddress" value="{{ config.get('webrtcAddress', ':8887').split(':')[1] if ':' in config.get('webrtcAddress', ':8887') else '8887' }}" placeholder="8887">
                             <p class="help-text">HTTP port for signalling (WHEP). Media flows over UDP 8189.</p>
                         </div>
 
@@ -5926,7 +5926,7 @@ HTML_TEMPLATE = '''
             // playbackConfig is loaded once at page load; default to HLS so a
             // failed/absent fetch can never take the watch button offline.
             const playbackMode = (playbackConfig && playbackConfig.mode) || 'hls';
-            // Signalling goes through the console, never straight to :8889 —
+            // Signalling goes through the console, never straight to :8887 —
             // same-origin (no CORS), session-authenticated, and it lets the
             // WebRTC port stay bound to localhost like HLS already is.
             const whepUrl = (playbackConfig && playbackConfig.webrtc_available)
@@ -10928,6 +10928,7 @@ def get_stream_urls():
     # Use domain from cert if available, otherwise use request host (IP)
     domain = stream_info['domain'] if stream_info['domain'] else request.host.split(':')[0]
     protocol = stream_info['protocol']
+    webrtc_port = str(read_yaml_field('webrtcAddress', ':8887')).rsplit(':', 1)[-1] or '8887'
     
     urls = {
         'rtsp': f'rtsp://{domain}:8554/teststream',
@@ -10936,7 +10937,7 @@ def get_stream_urls():
         # Browser-only, video without audio/KLV. MediaMTX serves its own player at
         # this path and the WHEP endpoint at <path>/whep. Only surfaced when the
         # protocol is actually enabled, so the UI never shows a dead link.
-        'webrtc': f'{protocol}://{domain}:8889/teststream' if read_yaml_field('webrtc', 'no') == 'yes' else None
+        'webrtc': f'{protocol}://{domain}:{webrtc_port}/teststream' if read_yaml_field('webrtc', 'no') == 'yes' else None
     }
 
     return jsonify(urls)
@@ -11321,7 +11322,7 @@ def toggle_protocol():
         subprocess.run(['sed', '-i', f's/^{protocol}: .*/{protocol}: {value}/', CONFIG_FILE], check=True)
 
         # NB: this used to auto-pin webrtcAddress to `127.0.0.1:<port>` on
-        # every WebRTC-on toggle, to keep :8889 off the public interface.
+        # every WebRTC-on toggle, to keep :8887 off the public interface.
         # DO NOT re-add that pin here: standalone mediamtx runs Dockerized
         # (bridge network, not --network host). A `127.0.0.1:<port>` bind is
         # container-internal loopback only - Docker's host->container port
@@ -11340,9 +11341,9 @@ def toggle_protocol():
             'hls': [('8888', 'tcp')],
             'srt': [('8890', 'udp')],
             # 8189/udp only. WHEP signalling is proxied via /whep/<stream> and
-            # /shared/<token>/whep, so 8889 is reached over loopback and must
+            # /shared/<token>/whep, so 8887 is reached over loopback and must
             # NOT be published: MediaMTX knows nothing about share tokens, so a
-            # public 8889 lets anyone who guesses a stream name negotiate a
+            # public 8887 lets anyone who guesses a stream name negotiate a
             # session directly and read it, making the token check decorative.
             # 8189 carries media only and is safe - no media flows without a
             # negotiated session, and negotiating requires passing the proxy.
@@ -14756,9 +14757,10 @@ def whep_negotiate(stream, sdp_offer):
 
     Signalling is proxied for the same reason HLS is: MediaMTX has no notion of
     our share tokens, so the only way to enforce them is to be the one thing
-    that can reach it. Pair this with webrtcAddress bound to 127.0.0.1 -- if
-    :8889 stays publicly reachable, anyone who knows a stream name can
-    negotiate directly and the token check is decorative.
+    that can reach it. Pair this with the webrtcAddress port (:8887) published
+    only on 127.0.0.1 in docker-compose.yml -- if it stays publicly reachable,
+    anyone who knows a stream name can negotiate directly and the token check
+    is decorative.
 
     Media itself still flows MediaMTX:8189 -> browser and never passes through
     here, which is fine: no media is sent without a negotiated session, and a
@@ -14772,7 +14774,7 @@ def whep_negotiate(stream, sdp_offer):
         return None, 'Invalid stream name'
     try:
         enc = str(read_yaml_field('webrtcEncryption', 'no')).lower() in ('yes', 'true')
-        port = str(read_yaml_field('webrtcAddress', ':8889')).split(':')[-1] or '8889'
+        port = str(read_yaml_field('webrtcAddress', ':8887')).split(':')[-1] or '8887'
         url = f"{'https' if enc else 'http'}://127.0.0.1:{port}/{stream}/whep"
         # Self-signed / hostname-mismatched certs are expected on the loopback hop.
         ctx = ssl.create_default_context()
