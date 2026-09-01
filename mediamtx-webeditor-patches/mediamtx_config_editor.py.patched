@@ -11320,22 +11320,18 @@ def toggle_protocol():
         value = 'yes' if enabled else 'no'
         subprocess.run(['sed', '-i', f's/^{protocol}: .*/{protocol}: {value}/', CONFIG_FILE], check=True)
 
-        # Turning WebRTC on also pins its signalling to loopback. Installs made
-        # before WebRTC was exposed still carry `webrtcAddress: :8889` from the
-        # old template, and left as-is the listener would come up on every
-        # interface. That is the token-bypass case: MediaMTX has no concept of
-        # our share tokens, so a reachable 8889 lets anyone who knows a stream
-        # name negotiate directly. Playback is unaffected - the console proxies
-        # WHEP over loopback either way.
-        if protocol == 'webrtc' and enabled:
-            try:
-                current = str(read_yaml_field('webrtcAddress', ':8889') or ':8889')
-                port = current.rsplit(':', 1)[-1] or '8889'
-                if not current.startswith('127.0.0.1'):
-                    subprocess.run(['sed', '-i', f's/^webrtcAddress: .*/webrtcAddress: 127.0.0.1:{port}/', CONFIG_FILE], check=True)
-                    print(f"✓ WebRTC signalling bound to 127.0.0.1:{port} (was {current})", flush=True)
-            except Exception as e:
-                print(f"Warning: could not pin webrtcAddress to loopback: {e}", flush=True)
+        # NB: this used to auto-pin webrtcAddress to `127.0.0.1:<port>` on
+        # every WebRTC-on toggle, to keep :8889 off the public interface.
+        # DO NOT re-add that pin here: standalone mediamtx runs Dockerized
+        # (bridge network, not --network host). A `127.0.0.1:<port>` bind is
+        # container-internal loopback only - Docker's host->container port
+        # forward can never reach it, so pinning would silently break WHEP
+        # for everyone (whep_negotiate()'s proxy hop would time out/refuse).
+        # The "don't expose signalling publicly" goal is already met by
+        # publishing the container's bind-all webrtcAddress port as
+        # 127.0.0.1:<port>:<port> in docker-compose.yml (host-loopback-only) -
+        # see project_ksu_ebee_watch_ui_hls_whep memory. webrtcAddress itself
+        # must stay bind-all (":<port>") for that publish to work at all.
 
         # Auto-manage UFW for protocol ports
         protocol_ports = {
