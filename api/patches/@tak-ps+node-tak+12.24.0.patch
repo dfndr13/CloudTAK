@@ -1,0 +1,96 @@
+diff --git a/node_modules/@tak-ps/node-tak/dist/lib/auth.js b/node_modules/@tak-ps/node-tak/dist/lib/auth.js
+index 318dd6a..086a2a2 100644
+--- a/node_modules/@tak-ps/node-tak/dist/lib/auth.js
++++ b/node_modules/@tak-ps/node-tak/dist/lib/auth.js
+@@ -1,8 +1,49 @@
+ import fetch from './fetch.js';
+ import { Type } from '@sinclair/typebox';
+ import { Client } from 'undici';
++import { createHash } from 'node:crypto';
+ import stream2buffer from './stream.js';
+ import { encodeMultipartFormData } from './multipart.js';
++/**
++ * Session reuse for certificate-authenticated requests.
++ *
++ * Without this, every APIAuthCertificate request opens a fresh connection and
++ * never returns the JSESSIONID the server sets, so TAK Server mints a brand new
++ * HTTP session (and a retained AuthenticatedUser) for every single call. Under
++ * CloudTAK's continuous Marti polling that is ~100 orphaned sessions/minute,
++ * which fills the api JVM heap and OOMs it on a multi-day cycle.
++ *
++ * Here we keep one JSESSIONID per (origin + client cert) and send it back on
++ * subsequent calls, so the server reuses the existing session instead. Opt out
++ * with TAK_API_SESSION_REUSE=false (or 0).
++ */
++const _sessionReuseEnabled = process.env.TAK_API_SESSION_REUSE !== 'false'
++    && process.env.TAK_API_SESSION_REUSE !== '0';
++const _takSessionJar = new Map();
++const _JAR_TTL_MS = 30 * 60 * 1000;
++function _jarKey(origin, cert) {
++    return origin + '\n' + createHash('sha256').update(String(cert)).digest('hex');
++}
++function _jarSweep() {
++    if (_takSessionJar.size <= 50)
++        return;
++    const cutoff = Date.now() - _JAR_TTL_MS;
++    for (const [k, v] of _takSessionJar) {
++        if (v.ts < cutoff)
++            _takSessionJar.delete(k);
++    }
++}
++function _extractJsessionId(setCookie) {
++    if (!setCookie)
++        return undefined;
++    const list = Array.isArray(setCookie) ? setCookie : [setCookie];
++    for (const raw of list) {
++        const first = String(raw).split(';', 1)[0].trim();
++        if (/^JSESSIONID=/i.test(first))
++            return first;
++    }
++    return undefined;
++}
+ /**
+  * Store the TAK Client Certificate for a connection
+  */
+@@ -88,10 +129,34 @@ export class APIAuthCertificate extends APIAuth {
+                 body: multipart.body
+             };
+         }
++        const jarKey = _sessionReuseEnabled ? _jarKey(api.url.origin, this.cert) : undefined;
++        if (jarKey) {
++            const entry = _takSessionJar.get(jarKey);
++            if (entry && entry.cookie) {
++                opts.headers = opts.headers || {};
++                const existing = opts.headers.cookie || opts.headers.Cookie;
++                opts.headers.cookie = existing ? `${existing}; ${entry.cookie}` : entry.cookie;
++            }
++        }
+         const res = await client.request({
+             path: String(url).replace(api.url.origin, ''),
+             ...opts
+         });
++        if (jarKey) {
++            const jsid = _extractJsessionId(res.headers['set-cookie']);
++            if (jsid) {
++                _takSessionJar.set(jarKey, { cookie: jsid, ts: Date.now() });
++            }
++            else if (res.statusCode === 401 || res.statusCode === 403) {
++                _takSessionJar.delete(jarKey);
++            }
++            else {
++                const entry = _takSessionJar.get(jarKey);
++                if (entry)
++                    entry.ts = Date.now();
++            }
++            _jarSweep();
++        }
+         return {
+             status: res.statusCode,
+             body: res.body,
+@@ -106,4 +171,4 @@ export class APIAuthCertificate extends APIAuth {
+         };
+     }
+ }
+-//# sourceMappingURL=auth.js.map
+\ No newline at end of file
++//# sourceMappingURL=auth.js.map
