@@ -12,7 +12,8 @@ export function ingestSource(source) {
         return source;
     try {
         const url = new URL(source);
-        if ((url.protocol === 'rtsp:' || url.protocol === 'rtsps:') && url.hostname === 'video.ksutak.org') {
+        if ((url.protocol === 'rtsp:' || url.protocol === 'rtsps:') &&
+            (url.hostname === 'video.ksutak.org' || url.hostname === '172.93.52.232')) {
             url.hostname = 'mediamtx';
         }
         return url.toString();
