@@ -8,6 +8,13 @@
 .docker-*
 deploy-*.sh
 api/assets/*
+
+# TAK Portal CloudTAK marketplace - vendored plugin source + generated compose
+# override, both written/managed by the portal itself (docker-compose.marketplace.yml
+# is headed "Managed by TAK Portal CloudTAK marketplace. Do not edit by hand.").
+# Local runtime state, not CloudTAK source - same reasoning as node_modules/.env.
+/cloudtak-marketplace-plugins/
+/docker-compose.marketplace.yml
 Caddyfile
 .DS_Store
 
