@@ -23,6 +23,9 @@ RUN npm install
 
 COPY ./ $HOME/api
 
+# npm install above runs before patches/ is copied, so apply node_modules patches now
+RUN ./node_modules/.bin/patch-package
+
 RUN WEB_PLUGINS="$WEB_PLUGINS" node bin/plugin.ts
 
 RUN cd web \
