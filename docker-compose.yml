@@ -29,6 +29,15 @@ services:
             - API_URL=${API_URL}
             - PMTILES_URL=${PMTILES_URL}
             - NODE_EXTRA_CA_CERTS=/tak-ca.pem
+            # CSP allowances for marketplace plugins that fetch external data
+            # client-side (currently: livewx weather/radar/lightning). Defaults
+            # match docker-compose.marketplace.yml, the file TAK Portal's
+            # marketplace writes but nothing actually loads via -f - baked in
+            # here so they're load-bearing for the running deployment. If the
+            # portal adds a plugin needing more domains, extend the default
+            # list below (or set NGINX_CSP_CONNECT_SRC/IMG_SRC in .env).
+            - NGINX_CSP_CONNECT_SRC=${NGINX_CSP_CONNECT_SRC:-https://mesonet.agron.iastate.edu,https://api.weather.gov,wss://ws1.blitzortung.org,wss://ws7.blitzortung.org,wss://ws8.blitzortung.org,wss://*.blitzortung.org}
+            - NGINX_CSP_IMG_SRC=${NGINX_CSP_IMG_SRC:-https://mesonet.agron.iastate.edu,https://api.weather.gov}
         volumes:
             - /opt/tak/certs/files/ca.pem:/tak-ca.pem
 
