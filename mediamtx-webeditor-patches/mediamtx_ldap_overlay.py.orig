@@ -295,15 +295,19 @@ start();
     # Share links (/shared/<token>, /shared-hls/, /api/share-links*) are provided by core; overlay only allows paths for viewers.
 
     @app.before_request
-    def _agency_admin_share_generate():
-        """Core's /api/share-links/generate only allows admin and viewer. Let agency admins
-        generate links too, for their own agency's streams only."""
-        if request.endpoint != 'api_share_links_generate' or session.get('role') != 'agency_admin':
+    def _agency_share_generate():
+        """Core's /api/share-links/generate has no agency check and only allows admin and viewer.
+        Limit viewers and agency admins to their own agency's streams, and let agency admins
+        generate links too."""
+        role = session.get('role')
+        if request.endpoint != 'api_share_links_generate' or role not in ('viewer', 'agency_admin'):
             return None
         agency_abbr = session.get('agency_abbreviation', '')
         stream = ((request.get_json(silent=True) or {}).get('stream') or '').strip()
         if not _in_agency(stream, agency_abbr):
             return jsonify({'error': 'Unauthorized — not your agency stream'}), 403
+        if role == 'viewer':
+            return None  # agency check passed; core handles viewers
         # Core checks role in ('admin', 'viewer'); present as viewer for this one call
         session['role'] = 'viewer'
         try:
