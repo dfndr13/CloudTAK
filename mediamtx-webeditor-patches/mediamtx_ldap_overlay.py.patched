@@ -3,10 +3,13 @@
 Applied by infra-TAK at deploy time when Authentik/LDAP is detected.
 Patches the vanilla MediaMTX config editor Flask app to:
   1. Auto-authenticate via Authentik forward_auth headers (no local login page)
-  2. Map vid_* LDAP groups to admin/viewer roles
+  2. Map vid_* LDAP groups to admin/agency_admin/viewer roles (admin wins, then agency_admin)
   3. Viewers (vid_public, vid_private): only see Active Streams page at /viewer — same idea as TAK Portal regular user page
-  4. Admins (vid_admin, authentik Admins): full config editor + Stream Access at /stream-access
-  5. Future: filter streams in /viewer by path-to-group mapping (vid_public vs vid_private determines which streams each user sees)
+  4. Agency admins (vid_agency_admin): only see /agency-admin — their own agency's streams and public/private visibility.
+     The agency comes from the user's agency_abbreviation attribute in Authentik, not from the group name.
+  5. Admins (vid_admin, authentik Admins): full config editor + Stream Access at /stream-access
+  6. Filter streams by agency: the first path segment (AGENCY/streamname) must match agency_abbreviation.
+     Per-stream visibility in stream_visibility.json decides what vid_public vs vid_private viewers see.
 """
 
 import os
