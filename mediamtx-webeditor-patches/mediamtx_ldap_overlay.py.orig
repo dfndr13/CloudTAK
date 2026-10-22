@@ -17,6 +17,7 @@ from flask import session, request, redirect, jsonify, Response
 
 AK_URL = os.environ.get('AUTHENTIK_API_URL', 'http://127.0.0.1:9090')
 AK_TOKEN = os.environ.get('AUTHENTIK_TOKEN', '')
+HLS_SECRET = os.environ.get('MEDIAMTX_HLS_SECRET', '')
 VID_GROUPS = ('vid_private', 'vid_public')
 ADMIN_GROUPS = frozenset({'authentik Admins', 'vid_admin'})
 # AGENCY_ADMIN_SUFFIX removed — using vid_agency_admin group instead
@@ -205,7 +206,7 @@ def apply_ldap_overlay(app):
         """Internal: fetch HLS content from MediaMTX with credentials.
         Uses urllib (no cookie jar) so MediaMTX uses URL-based session mode (v1.18+)."""
         url = f'http://127.0.0.1:8980/{subpath}'
-        req = urllib.request.Request(url, headers={"Authorization": "Bearer ebe0d03dd672c018772282012beed7ea325a7f4c037aac22bf69907beb744ce8"})
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {HLS_SECRET}"})
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.read(), resp.headers.get('Content-Type', 'application/octet-stream')
