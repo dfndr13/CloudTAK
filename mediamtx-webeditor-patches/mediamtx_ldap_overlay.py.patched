@@ -39,7 +39,7 @@ KICK_ENDPOINTS = {
 
 def _in_agency(stream, agency_abbr):
     """True if stream is AGENCY/... for this agency. Rejects empty, '.' and '..' segments,
-    which would otherwise let 'SPD/../OTHER/x' pass a prefix check and reach another agency."""
+    which would otherwise let 'MPD/../OTHER/x' pass a prefix check and reach another agency."""
     parts = stream.split('/')
     return (bool(agency_abbr) and len(parts) >= 2 and parts[0].upper() == agency_abbr.upper()
             and all(p not in ('', '.', '..') for p in parts))
