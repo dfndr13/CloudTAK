@@ -25,6 +25,24 @@ VID_GROUPS = ('vid_private', 'vid_public')
 ADMIN_GROUPS = frozenset({'authentik Admins', 'vid_admin'})
 # AGENCY_ADMIN_SUFFIX removed — using vid_agency_admin group instead
 VIEWER_GROUPS = frozenset({'vid_private', 'vid_public'})
+# MediaMTX path source type -> /v3/<endpoint>/kick/{id} (publisher connections only)
+KICK_ENDPOINTS = {
+    'rtspSession': 'rtspsessions',
+    'rtspsSession': 'rtspssessions',
+    'rtmpConn': 'rtmpconns',
+    'rtmpsConn': 'rtmpsconns',
+    'srtConn': 'srtconns',
+    'webRTCSession': 'webrtcsessions',
+    'moqSession': 'moqsessions',
+}
+
+
+def _in_agency(stream, agency_abbr):
+    """True if stream is AGENCY/... for this agency. Rejects empty, '.' and '..' segments,
+    which would otherwise let 'SPD/../OTHER/x' pass a prefix check and reach another agency."""
+    parts = stream.split('/')
+    return (bool(agency_abbr) and len(parts) >= 2 and parts[0].upper() == agency_abbr.upper()
+            and all(p not in ('', '.', '..') for p in parts))
 
 VISIBILITY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stream_visibility.json')
 
@@ -182,14 +200,17 @@ def apply_ldap_overlay(app):
         agency_abbr = session.get("agency_abbreviation", "")
         is_global_admin = session.get("role") == "admin"
         if not is_global_admin and agency_abbr:
-            stream_agency = parts[0].upper() if parts else ""
-            if stream_agency != agency_abbr.upper():
+            if not _in_agency(subpath, agency_abbr):
                 return "Unauthorized", 403
         vis = _load_visibility()
         level = vis.get(stream_name, 'public')
         if level == 'private':
             role = session.get('role')
-            if role not in ('viewer', 'admin'):
+            if role == 'agency_admin':
+                # The agency check above has already matched the stream to this agency
+                if not agency_abbr:
+                    return 'Unauthorized', 403
+            elif role not in ('viewer', 'admin'):
                 return 'Unauthorized', 403
             if role == 'viewer':
                 user_groups = set(session.get('ldap_groups') or [])
@@ -229,8 +250,7 @@ def apply_ldap_overlay(app):
         agency_abbr = session.get("agency_abbreviation", "")
         is_global_admin = session.get("role") == "admin"
         if not is_global_admin and agency_abbr:
-            stream_agency = stream_name.split("/")[0].upper() if "/" in stream_name else ""
-            if stream_agency != agency_abbr.upper():
+            if not _in_agency(stream_name, agency_abbr):
                 return Response(WATCH_PRIVATE_HTML, content_type="text/html", status=403)
         vis = _load_visibility()
         level = vis.get(stream_name, 'public')
@@ -238,6 +258,8 @@ def apply_ldap_overlay(app):
             role = session.get('role')
             if role == 'admin':
                 pass
+            elif role == 'agency_admin' and agency_abbr:
+                pass  # the agency check above has already matched the stream to this agency
             elif role == 'viewer':
                 user_groups = set(session.get('ldap_groups') or [])
                 if not (user_groups & {'vid_private'}):
@@ -271,6 +293,23 @@ start();
         return Response(html, content_type='text/html')
 
     # Share links (/shared/<token>, /shared-hls/, /api/share-links*) are provided by core; overlay only allows paths for viewers.
+
+    @app.before_request
+    def _agency_admin_share_generate():
+        """Core's /api/share-links/generate only allows admin and viewer. Let agency admins
+        generate links too, for their own agency's streams only."""
+        if request.endpoint != 'api_share_links_generate' or session.get('role') != 'agency_admin':
+            return None
+        agency_abbr = session.get('agency_abbreviation', '')
+        stream = ((request.get_json(silent=True) or {}).get('stream') or '').strip()
+        if not _in_agency(stream, agency_abbr):
+            return jsonify({'error': 'Unauthorized — not your agency stream'}), 403
+        # Core checks role in ('admin', 'viewer'); present as viewer for this one call
+        session['role'] = 'viewer'
+        try:
+            return app.view_functions['api_share_links_generate']()
+        finally:
+            session['role'] = 'agency_admin'
 
     # ── Active Streams viewer page (vid_public / vid_private) ────────────
 
@@ -455,13 +494,31 @@ start();
             stream = data.get('stream', '').strip()
             if not stream:
                 return jsonify({'error': 'Stream name required'}), 400
-            if not agency_abbr or not stream.upper().startswith(agency_abbr.upper() + '/'):
+            if not _in_agency(stream, agency_abbr):
                 return jsonify({'error': 'Unauthorized — not your agency stream'}), 403
-            api_url = os.environ.get('MEDIAMTX_API_URL', 'http://127.0.0.1:9898')
+            api_url = os.environ.get('MEDIAMTX_API_URL', 'http://127.0.0.1:9898').rstrip('/')
             import urllib.parse
-            encoded = urllib.parse.quote(stream, safe='')
+            # MediaMTX (v1.20) has no per-path kick. Look up the path's publisher and kick
+            # it through the endpoint for its protocol.
+            try:
+                req = urllib.request.Request(
+                    f'{api_url}/v3/paths/get/{urllib.parse.quote(stream, safe="/")}',
+                    headers={'Accept': 'application/json'}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    path_info = json.loads(resp.read().decode())
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    return jsonify({'error': 'Stream is not live'}), 404
+                return jsonify({'error': f'MediaMTX API {e.code}'}), 502
+            source = path_info.get('source') or {}
+            if not source:
+                return jsonify({'error': 'Stream is not live'}), 404
+            kick = KICK_ENDPOINTS.get(source.get('type'))
+            if not kick or not source.get('id'):
+                return jsonify({'error': f"Can't stop this stream: its source ({source.get('type')}) isn't a publisher connection"}), 409
             req = urllib.request.Request(
-                f'{api_url.rstrip("/")}/v3/paths/kick/{encoded}',
+                f'{api_url}/v3/{kick}/kick/{urllib.parse.quote(source["id"], safe="")}',
                 headers={'Accept': 'application/json'},
                 method='POST'
             )
@@ -469,8 +526,7 @@ start();
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     resp.read()
             except urllib.error.HTTPError as e:
-                if e.code not in (200, 204, 404):
-                    return jsonify({'error': f'MediaMTX API {e.code}'}), 502
+                return jsonify({'error': f'MediaMTX API {e.code}'}), 502
             return jsonify({'ok': True})
         except Exception as e:
             return jsonify({'error': str(e)[:200]}), 500
