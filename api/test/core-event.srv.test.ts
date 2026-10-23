@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import jwt from 'jsonwebtoken';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import Flight from './flight.js';
+import { setChannels } from '../common/models/CoreEntity.js';
 
 const flight = new Flight();
 
@@ -9,6 +11,7 @@ flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 flight.user({ username: 'user', admin: false });
+flight.integration('test-task');
 
 flight.connection();
 
@@ -69,12 +72,14 @@ test('POST: api/core/event', async () => {
         eventId = res.body.id;
         assert.ok(res.body.created, 'has created');
         assert.ok(res.body.updated, 'has updated');
+        assert.ok(res.body.started, 'has started');
         delete res.body.id;
         delete res.body.created;
         delete res.body.updated;
+        delete res.body.started;
 
         assert.deepEqual(res.body, {
-            mission_guid: null,
+            missions: [],
             username: 'admin@example.com',
             connection: null,
             priority: 'high',
@@ -83,6 +88,7 @@ test('POST: api/core/event', async () => {
             active: true,
             ended: null,
             external_id: '',
+            external_ids: {},
             editable: true,
             location: '1234 Main St, Boulder, CO',
             remarks: 'Fast moving fire North of Boulder',
@@ -256,7 +262,7 @@ test('PATCH: api/core/event/:event', async () => {
             body: {
                 priority: 'critical',
                 remarks: 'Fire has jumped the ridge',
-                external_id: 'INC-1234',
+                external_id: { system: 'cad', value: 'INC-1234' },
                 ended: '2026-07-14T12:00:00.000Z',
                 geometry: {
                     type: 'Point',
@@ -269,13 +275,81 @@ test('PATCH: api/core/event/:event', async () => {
         assert.equal(res.body.priority, 'critical');
         assert.equal(res.body.remarks, 'Fire has jumped the ridge');
         assert.equal(res.body.name, 'Wildfire Report');
-        assert.equal(res.body.external_id, 'INC-1234');
+        assert.deepEqual(res.body.external_ids, { cad: 'INC-1234' });
         assert.ok(res.body.ended, 'has ended');
         assert.deepEqual(res.body.geometry, {
             type: 'Point',
             coordinates: [-105.3005, 40.0455],
         });
         assert.deepEqual(res.body.channels, [1]);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - external IDs merge per system & an empty value removes one', async () => {
+    try {
+        const added = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                external_id: { system: 'caltopo', value: 'B42325' },
+            },
+        }, true);
+
+        assert.deepEqual(added.body.external_ids, { cad: 'INC-1234', caltopo: 'B42325' });
+
+        const replaced = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                external_id: { system: 'cad', value: 'INC-5678' },
+            },
+        }, true);
+
+        assert.deepEqual(replaced.body.external_ids, { cad: 'INC-5678', caltopo: 'B42325' });
+
+        const removed = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                external_id: { system: 'caltopo', value: '' },
+            },
+        }, true);
+
+        assert.deepEqual(removed.body.external_ids, { cad: 'INC-5678' });
+
+        // Deprecated bare string form is the default system & is echoed on the deprecated response field
+        const legacy = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                external_id: 'LEGACY-1',
+            },
+        }, true);
+
+        assert.deepEqual(legacy.body.external_ids, { cad: 'INC-5678', default: 'LEGACY-1' });
+        assert.equal(legacy.body.external_id, 'LEGACY-1');
+
+        const invalid = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                external_id: { system: 'not a system', value: 'x' },
+            },
+        }, false);
+
+        assert.equal(invalid.status, 400);
     } catch (err) {
         assert.ifError(err);
     }
@@ -406,7 +480,7 @@ test('PATCH: api/core/event/:event - update links & style', async () => {
     }
 });
 
-test('PATCH: api/core/event/:event - set and clear mission_guid', async () => {
+test('PATCH: api/core/event/:event - set and clear missions', async () => {
     try {
         const res = await flight.fetch(`/api/core/event/${eventId}`, {
             method: 'PATCH',
@@ -414,11 +488,29 @@ test('PATCH: api/core/event/:event - set and clear mission_guid', async () => {
                 bearer: flight.token.admin,
             },
             body: {
-                mission_guid: 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7',
+                missions: [{
+                    name: 'Boulder Wildfire',
+                    guid: 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7',
+                }],
             },
         }, true);
 
-        assert.equal(res.body.mission_guid, 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7');
+        assert.deepEqual(res.body.missions, [{
+            name: 'Boulder Wildfire',
+            guid: 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7',
+        }]);
+
+        const invalid = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                missions: [{ name: 'No GUID' }],
+            },
+        }, false);
+
+        assert.equal(invalid.status, 400);
 
         const cleared = await flight.fetch(`/api/core/event/${eventId}`, {
             method: 'PATCH',
@@ -426,11 +518,11 @@ test('PATCH: api/core/event/:event - set and clear mission_guid', async () => {
                 bearer: flight.token.admin,
             },
             body: {
-                mission_guid: null,
+                missions: [],
             },
         }, true);
 
-        assert.equal(cleared.body.mission_guid, null);
+        assert.deepEqual(cleared.body.missions, []);
     } catch (err) {
         assert.ifError(err);
     }
@@ -500,7 +592,51 @@ test('PATCH: api/core/event/:event - active false sets ended', async () => {
     }
 });
 
-test('PATCH: api/core/event/:event - clear channels', async () => {
+test('PATCH: api/core/event/:event - a future ended keeps the Event active until then', async () => {
+    try {
+        const patch = async (body: Record<string, unknown>) => {
+            const res = await flight.fetch(`/api/core/event/${eventId}`, {
+                method: 'PATCH',
+                auth: { bearer: flight.token.admin },
+                body,
+            }, true);
+
+            assert.equal(res.status, 200);
+            return res.body;
+        };
+
+        const scheduled = await patch({ ended: new Date(Date.now() + 60 * 60 * 1000).toISOString() });
+        assert.equal(scheduled.active, true, 'active until ended');
+        assert.ok(scheduled.ended);
+
+        const pushed = await patch({ ended: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() });
+        assert.equal(pushed.active, true);
+        assert.ok(new Date(pushed.ended).getTime() > new Date(scheduled.ended).getTime(), 'ended pushed out');
+
+        // Ending now moves a future ended back to now
+        const ended = await patch({ active: false });
+        assert.equal(ended.active, false);
+        assert.ok(new Date(ended.ended).getTime() < new Date(pushed.ended).getTime(), 'ended moved to now');
+
+        const again = await patch({ active: false, remarks: 'Still ended' });
+        assert.equal(again.ended, ended.ended, 'a past ended is preserved');
+
+        const past = await patch({ ended: '2026-07-20T12:00:00.000Z' });
+        assert.equal(past.active, false, 'a past ended ends the Event');
+
+        const started = await patch({ started: '2026-07-01T12:00:00.000Z' });
+        assert.notEqual(started.started, past.started, 'started updated');
+        assert.ok(String(started.started).startsWith('2026-0'));
+
+        const reopened = await patch({ active: true });
+        assert.equal(reopened.active, true);
+        assert.equal(reopened.ended, null, 'reactivating leaves the Event open ended');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - channels cannot be cleared', async () => {
     try {
         const res = await flight.fetch(`/api/core/event/${eventId}`, {
             method: 'PATCH',
@@ -510,9 +646,26 @@ test('PATCH: api/core/event/:event - clear channels', async () => {
             body: {
                 channels: [],
             },
-        }, true);
+        }, false);
 
-        assert.deepEqual(res.body.channels, []);
+        assert.equal(res.status, 400);
+
+        const create = await flight.fetch('/api/core/event', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'Unshared Event',
+                type: '10031000001213000000',
+                geometry: {
+                    type: 'Point',
+                    coordinates: [-105.2705, 40.015],
+                },
+            },
+        }, false);
+
+        assert.equal(create.status, 400);
     } catch (err) {
         assert.ifError(err);
     }
@@ -529,6 +682,7 @@ test('POST: api/connection/1/token - create machine token', async () => {
                 bearer: flight.token.admin,
             },
             body: {
+                permissions: ['event:*'],
                 name: 'Core Event Token',
             },
         }, true);
@@ -551,7 +705,7 @@ test('POST: api/core/event - connection token', async () => {
                 name: 'Sensor Alert',
                 type: '10031000001213000000',
                 priority: 'low',
-                external_id: 'SENSOR-1',
+                external_id: { system: 'sensor', value: 'SENSOR-1' },
                 geometry: {
                     type: 'Point',
                     coordinates: [-104.9903, 39.7392],
@@ -566,9 +720,145 @@ test('POST: api/core/event - connection token', async () => {
         assert.equal(res.body.username, null);
         assert.equal(res.body.connection, 1);
         assert.equal(res.body.name, 'Sensor Alert');
+        assert.deepEqual(res.body.external_ids, { sensor: 'SENSOR-1' });
         assert.deepEqual(res.body.channels, [7]);
         assert.deepEqual(res.body.links, [], 'links default to an empty array');
         assert.deepEqual(res.body.style, {}, 'style defaults to an empty object');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('POST: api/core/event - 400 for a user without channels', async () => {
+    try {
+        const res = await flight.fetch('/api/core/event', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'No Channels',
+                type: '10031000001213000000',
+                geometry: {
+                    type: 'Point',
+                    coordinates: [-104.9903, 39.7392],
+                },
+            },
+        }, false);
+
+        assert.equal(res.status, 400);
+        assert.equal(res.body.message, 'channels is required - at least one Channel to share the Event with');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - an Event without channels inherits the Channels of its Connection', async () => {
+    try {
+        const created = await flight.fetch('/api/core/event', {
+            method: 'POST',
+            auth: {
+                bearer: connectionToken,
+            },
+            body: {
+                name: 'Orphaned Event',
+                type: '10031000001213000000',
+                geometry: { type: 'Point', coordinates: [-104.9903, 39.7392] },
+                channels: [7],
+            },
+        }, true);
+
+        // Events created before sharing was required may have no channels
+        await setChannels(flight.config!.pg, created.body.id, []);
+
+        const groups = [
+            { name: 'Ops', direction: 'IN', created: '2026-01-01', type: 'SYSTEM', bitpos: 4, active: true },
+            { name: 'Ops', direction: 'OUT', created: '2026-01-01', type: 'SYSTEM', bitpos: 4, active: true },
+        ];
+
+        flight.tak.mockMarti.unshift(async (request: IncomingMessage, response: ServerResponse) => {
+            if (request.method !== 'GET' || request.url !== '/Marti/api/groups/all?useCache=true') return false;
+
+            response.setHeader('Content-Type', 'application/json');
+            response.write(JSON.stringify({ version: '3', type: 'com.bbn.marti.remote.groups.Group', data: groups }));
+            response.end();
+            return true;
+        });
+        await flight.refreshChannels(1);
+
+        const res = await flight.fetch(`/api/core/event/${created.body.id}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: connectionToken,
+            },
+            body: {
+                remarks: 'Updated',
+            },
+        }, true);
+
+        assert.equal(res.body.remarks, 'Updated');
+        assert.deepEqual(res.body.channels, [4]);
+
+        flight.tak.mockMarti.shift();
+        await flight.refreshChannels(1);
+
+        await flight.fetch(`/api/core/event/${created.body.id}`, {
+            method: 'DELETE',
+            auth: {
+                bearer: connectionToken,
+            },
+        }, true);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('POST: api/core/event - connection token inherits the Channels of the Connection', async () => {
+    try {
+        const groups = [
+            { name: 'Ops', direction: 'IN', created: '2026-01-01', type: 'SYSTEM', bitpos: 4, active: true },
+            { name: 'Ops', direction: 'OUT', created: '2026-01-01', type: 'SYSTEM', bitpos: 4, active: true },
+            { name: 'Inactive', direction: 'IN', created: '2026-01-01', type: 'SYSTEM', bitpos: 6, active: false },
+        ];
+
+        flight.tak.mockMarti.unshift(async (request: IncomingMessage, response: ServerResponse) => {
+            if (request.method !== 'GET' || request.url !== '/Marti/api/groups/all?useCache=true') return false;
+
+            response.setHeader('Content-Type', 'application/json');
+            response.write(JSON.stringify({ version: '3', type: 'com.bbn.marti.remote.groups.Group', data: groups }));
+            response.end();
+            return true;
+        });
+        await flight.refreshChannels(1);
+
+        const res = await flight.fetch('/api/core/event', {
+            method: 'POST',
+            auth: {
+                bearer: connectionToken,
+            },
+            body: {
+                name: 'Inherited Channels',
+                type: '10031000001213000000',
+                external_id: { system: 'sensor', value: 'SENSOR-2' },
+                geometry: {
+                    type: 'Point',
+                    coordinates: [-104.9903, 39.7392],
+                },
+            },
+        }, true);
+
+        assert.equal(res.body.connection, 1);
+        assert.deepEqual(res.body.channels, [4]);
+
+        flight.tak.mockMarti.shift();
+        await flight.refreshChannels(1);
+
+        await flight.fetch(`/api/core/event/${res.body.id}`, {
+            method: 'DELETE',
+            auth: {
+                bearer: connectionToken,
+            },
+        }, true);
     } catch (err) {
         assert.ifError(err);
     }
@@ -663,13 +953,123 @@ test('PATCH: api/core/event/:event - 403 for connection token on user event', as
     }
 });
 
+// The mock TAK Server reports no channels by default - report channel 7 active
+// for every certificate so Connection 1 shares a channel with the user Event
+const channelSeven = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    if (request.method !== 'GET' || request.url !== '/Marti/api/groups/all?useCache=true') return false;
+
+    response.setHeader('Content-Type', 'application/json');
+    response.write(JSON.stringify({
+        version: '3',
+        type: 'com.bbn.marti.remote.groups.Group',
+        data: [{ name: 'SAR', direction: 'IN', created: '2026-01-01', type: 'SYSTEM', bitpos: 7, active: true, description: '' }],
+    }));
+    response.end();
+    return true;
+};
+
+let sharedEventId: string;
+
+test('GET: api/core/event/:event - connection token with a shared channel active', async () => {
+    try {
+        flight.tak.mockMarti.unshift(channelSeven);
+        await flight.refreshChannels(1);
+
+        // Created by a user, not the Connection, and shared with channel 7
+        const created = await flight.fetch('/api/core/event', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'Missing Hunter',
+                type: '13031100001110000000',
+                geometry: { type: 'Point', coordinates: [-108.4357, 38.5663] },
+                channels: [7],
+            },
+        }, true);
+
+        sharedEventId = created.body.id;
+
+        const res = await flight.fetch(`/api/core/event/${sharedEventId}`, {
+            method: 'GET',
+            auth: {
+                bearer: connectionToken,
+            },
+        }, true);
+
+        assert.equal(res.body.id, sharedEventId);
+        assert.equal(res.body.connection, null);
+        assert.deepEqual(res.body.channels, [7]);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - connection token with a shared channel active', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${sharedEventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: connectionToken,
+            },
+            body: {
+                links: [{ name: 'Slack: #sar-incident', url: 'https://example.slack.com/archives/C0123' }],
+            },
+        }, true);
+
+        assert.deepEqual(res.body.links, [{ name: 'Slack: #sar-incident', url: 'https://example.slack.com/archives/C0123' }]);
+    } catch (err) {
+        assert.ifError(err);
+    } finally {
+        flight.tak.mockMarti.splice(flight.tak.mockMarti.indexOf(channelSeven), 1);
+        await flight.refreshChannels(1);
+    }
+});
+
+test('GET: api/core/event/:event - 403 for connection token once the shared channel is inactive', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${sharedEventId}`, {
+            method: 'GET',
+            auth: {
+                bearer: connectionToken,
+            },
+        }, false);
+
+        assert.equal(res.status, 403);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 test('PATCH: api/core/event/:event - layer token from same connection', async () => {
     try {
         await flight.config!.models.Layer.generate({
             name: 'Core Event Layer',
-            task: 'test-task-v1.0.0',
+            task: 1,
+            version: '1.0.0',
             connection: 1,
+            permissions: ['event:update'],
         });
+
+        await flight.config!.models.Layer.generate({
+            name: 'Unscoped Layer',
+            task: 1,
+            version: '1.0.0',
+            connection: 1,
+            permissions: ['event:read'],
+        });
+
+        const unscopedToken = 'etl.' + jwt.sign({ access: 'layer', id: 2, internal: true }, 'coe-wildland-fire');
+
+        const denied = await flight.fetch(`/api/core/event/${machineEventId}`, {
+            method: 'PATCH',
+            auth: { bearer: unscopedToken },
+            body: { remarks: 'Layer Edit' },
+        }, false);
+
+        assert.equal(denied.status, 403);
+        assert.equal(denied.body.message, 'Layer token does not have the event:update permission');
 
         const layerToken = 'etl.' + jwt.sign({ access: 'layer', id: 1, internal: true }, 'coe-wildland-fire');
 
@@ -689,16 +1089,58 @@ test('PATCH: api/core/event/:event - layer token from same connection', async ()
     }
 });
 
-test('DELETE: api/core/event/:event - resource token cannot delete', async () => {
+test('DELETE: api/core/event/:event - layer token without event:delete', async () => {
     try {
+        const unscopedToken = 'etl.' + jwt.sign({ access: 'layer', id: 2, internal: true }, 'coe-wildland-fire');
+
         const res = await flight.fetch(`/api/core/event/${machineEventId}`, {
             method: 'DELETE',
-            auth: {
-                bearer: connectionToken,
-            },
+            auth: { bearer: unscopedToken },
         }, false);
 
         assert.equal(res.status, 403);
+        assert.equal(res.body.message, 'Layer token does not have the event:delete permission');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('DELETE: api/core/event/:event - connection token cannot delete a user Event', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'DELETE',
+            auth: { bearer: connectionToken },
+        }, false);
+
+        assert.equal(res.status, 403);
+        assert.equal(res.body.message, 'Only the Event creator can delete this Event');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('DELETE: api/core/event/:event - layer token from same connection', async () => {
+    try {
+        await flight.config!.models.Layer.commit(1, { permissions: ['event:delete'] });
+
+        const layerToken = 'etl.' + jwt.sign({ access: 'layer', id: 1, internal: true }, 'coe-wildland-fire');
+
+        const res = await flight.fetch(`/api/core/event/${machineEventId}`, {
+            method: 'DELETE',
+            auth: { bearer: layerToken },
+        }, true);
+
+        assert.deepEqual(res.body, {
+            status: 200,
+            message: 'Core Event Deleted',
+        });
+
+        const get = await flight.fetch(`/api/core/event/${machineEventId}`, {
+            method: 'GET',
+            auth: { bearer: flight.token.admin },
+        }, false);
+
+        assert.equal(get.status, 404);
     } catch (err) {
         assert.ifError(err);
     }

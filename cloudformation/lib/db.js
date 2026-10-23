@@ -50,7 +50,7 @@ export default {
             Type: 'AWS::RDS::DBCluster',
             Properties: {
                 Engine: 'aurora-postgresql',
-                EngineVersion: '17.5',
+                EngineVersion: '18.6',
                 EngineMode: 'provisioned',
                 DatabaseName: 'tak_ps_etl',
                 Port: 5432,
@@ -121,17 +121,9 @@ export default {
         }
     },
     Outputs: {
-        DB: {
-            Description: 'Postgres Aurora Connection String',
-            Value: cf.join([
-                'postgresql://',
-                cf.sub('{{resolve:secretsmanager:${AWS::StackName}/rds/secret:SecretString:username:AWSCURRENT}}'),
-                ':',
-                cf.sub('{{resolve:secretsmanager:${AWS::StackName}/rds/secret:SecretString:password:AWSCURRENT}}'),
-                '@',
-                cf.getAtt('DBCluster', 'Endpoint.Address'),
-                ':5432/tak_ps_etl'
-            ])
+        DBEndpoint: {
+            Description: 'Postgres Aurora Cluster Endpoint',
+            Value: cf.getAtt('DBCluster', 'Endpoint.Address')
         }
     }
 };

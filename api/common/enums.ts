@@ -18,6 +18,12 @@ export class toEnum {
     }
 }
 
+export enum WebSocket_Event {
+    MAP = 'map',
+    VIDEO = 'video',
+    BOARD = 'board',
+}
+
 export enum Import_Status {
     EMPTY = 'Empty',
     PENDING = 'Pending',
@@ -32,6 +38,13 @@ export enum CoreEvent_Priority {
     MEDIUM = 'medium',
     HIGH = 'high',
     CRITICAL = 'critical',
+}
+
+export enum CoreEventEffect_Status {
+    TASKED = 'tasked',
+    ACTIVE = 'active',
+    COMPLETE = 'complete',
+    CANCELLED = 'cancelled',
 }
 
 export enum CoreEventBoardColumn_Type {
@@ -49,6 +62,21 @@ export function AllBooleanCast(allBoolean: AllBoolean): boolean | null {
     return allBoolean === AllBoolean.TRUE
         ? true
         : allBoolean === AllBoolean.FALSE ? false : null;
+}
+
+export enum Search_Type {
+    ADDRESS = 'address',
+    STREET = 'street',
+    POI = 'poi',
+    TRAILHEAD = 'trailhead',
+    PARKING = 'parking',
+    HOSPITAL = 'hospital',
+    POLICE = 'police',
+    PARK = 'park',
+    PEAK = 'peak',
+    LOCALITY = 'locality',
+    REGION = 'region',
+    POSTAL = 'postal',
 }
 
 export enum ExportFeatureFormat {
@@ -158,6 +186,12 @@ export enum Basemap_Type {
     VECTOR = 'vector',
 }
 
+export enum LayerMapping_Destination {
+    COREFEATURE = 'CoreFeature',
+    COREEVENT = 'CoreEvent',
+    COREDEVICE = 'CoreDevice',
+}
+
 export enum Layer_Priority {
     HIGH = 'high',
     LOW = 'low',
@@ -193,6 +227,13 @@ export enum Profile_Distance {
 export enum Profile_Elevation {
     METER = 'meter',
     FEET = 'feet',
+}
+
+export enum Profile_Area {
+    SQUARE_METER = 'square meter',
+    SQUARE_FEET = 'square feet',
+    ACRE = 'acre',
+    HECTARE = 'hectare',
 }
 
 export enum Profile_Radiation_Dose {

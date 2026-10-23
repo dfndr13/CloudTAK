@@ -6,12 +6,14 @@ import {
     CoreEventBoardEventResponse,
     CoreEventResponse,
 } from '../../common/types.js';
+import { CoreEntity } from '../../common/schema.js';
 import { sql } from 'drizzle-orm';
 import { GenericListOrder } from '@openaddresses/batch-generic';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../../common/auth.js';
 import { CoreEventBoardColumn_Type } from '../../common/enums.js';
+import { ETLEventAction } from '../../common/etl-events.js';
 import type ConfigStateless from '../config.js';
 import BoardControl, {
     MAX_LIST,
@@ -19,6 +21,7 @@ import BoardControl, {
     columnResponse,
     placementResponse,
 } from '../lib/control/board.js';
+import FormControl from '../lib/control/form.js';
 import * as Default from '../lib/limits.js';
 
 /**
@@ -28,6 +31,27 @@ import * as Default from '../lib/limits.js';
  */
 export default async function router(schema: Schema, config: ConfigStateless) {
     const boardControl = new BoardControl(config);
+    const formControl = new FormControl(config);
+
+    /**
+     * A Column change is not carried on the Event CoT but the rebroadcast
+     * signals Map clients to refetch the Event - best effort, the next
+     * scheduled cycle recovers a failed submit
+     */
+    function rebroadcast(event: string): void {
+        config.hub.coreEntitySubmit(event).catch((err) => {
+            console.error(`not ok - failed to immediately submit Core Event ${event}:`, err);
+        });
+    }
+
+    /** Refuse placing an Event into a Column whose required Forms it has not completed */
+    async function ensureRequiredForms(column: string, event: string): Promise<void> {
+        const missing = await formControl.missingRequiredForms(column, event);
+
+        if (missing.length) {
+            throw new Err(400, null, `Required Forms must be completed before the Event can be placed in this Column: ${missing.map(f => f.name).join(', ')}`);
+        }
+    }
 
     await schema.get('/board', {
         name: 'List Boards',
@@ -92,9 +116,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 description: req.body.description,
             });
 
-            await boardControl.ensureNominatedColumn(board.id);
+            const response = boardResponse(board);
+            boardControl.deliver(config.etlEvents.board(ETLEventAction.Create, response), `Board ${board.id}`);
 
-            res.json(boardResponse(board));
+            await boardControl.ensureNominatedColumn(board);
+
+            res.json(response);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -120,7 +147,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             const board = await boardControl.boardAccess(user, req.query.board);
 
-            await boardControl.ensureNominatedColumn(board.id);
+            await boardControl.ensureNominatedColumn(board);
 
             const columns = await config.models.CoreEventBoardColumn.list({
                 limit: MAX_LIST,
@@ -186,7 +213,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 position,
             });
 
-            res.json(columnResponse(column));
+            const response = columnResponse(column);
+            boardControl.deliver(
+                config.etlEvents.boardColumn(ETLEventAction.Create, Number(board.channel), response),
+                `Column ${column.id}`,
+            );
+
+            res.json(response);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -215,7 +248,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            let { column } = await boardControl.columnAccess(user, req.params.column);
+            const access = await boardControl.columnAccess(user, req.params.column);
+            let { column } = access;
 
             if (Object.keys(req.body).length > 0) {
                 column = await config.models.CoreEventBoardColumn.commit(req.params.column, {
@@ -224,7 +258,16 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 });
             }
 
-            res.json(columnResponse(column));
+            const response = columnResponse(column);
+
+            if (Object.keys(req.body).length > 0) {
+                boardControl.deliver(
+                    config.etlEvents.boardColumn(ETLEventAction.Update, Number(access.board.channel), response),
+                    `Column ${column.id}`,
+                );
+            }
+
+            res.json(response);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -244,13 +287,18 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const { column } = await boardControl.columnAccess(user, req.params.column);
+            const { column, board } = await boardControl.columnAccess(user, req.params.column);
 
             if (column.type === CoreEventBoardColumn_Type.NOMINATED) {
                 throw new Err(400, null, 'The Nominated Column cannot be deleted');
             }
 
             await config.models.CoreEventBoardColumn.delete(req.params.column);
+
+            boardControl.deliver(
+                config.etlEvents.boardColumn(ETLEventAction.Delete, Number(board.channel), columnResponse(column)),
+                `Column ${column.id}`,
+            );
 
             res.json({ status: 200, message: 'Column Deleted' });
         } catch (err) {
@@ -293,9 +341,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             const events = new Map<string, Static<typeof CoreEventResponse>>();
             if (placements.items.length) {
-                const list = await config.models.CoreEvent.augmented_list({
+                const list = await config.models.CoreEntity.augmented_list({
                     limit: placements.items.length,
-                    where: sql`id IN ${placements.items.map(p => p.event)}`,
+                    where: sql`${CoreEntity.id} IN ${placements.items.map(p => p.event)}`,
                 });
 
                 for (const event of list.items) {
@@ -352,7 +400,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             const { column, board } = await boardControl.columnAccess(user, req.body.column);
 
-            const event = await config.models.CoreEvent.augmented_from(req.body.event);
+            const event = await config.models.CoreEntity.augmented_from(req.body.event);
 
             if (!event.channels.map(c => Number(c)).includes(Number(board.channel))) {
                 throw new Err(400, null, 'The Event is not shared with the Board\'s Channel');
@@ -362,6 +410,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 limit: 1,
                 where: sql`board = ${board.id} AND event = ${req.body.event}`,
             });
+
+            // Reordering within the Column an Event already sits in stays
+            // possible even if required Forms were attached after placement
+            if (!existing.items.length || existing.items[0].column !== column.id) {
+                await ensureRequiredForms(column.id, req.body.event);
+            }
 
             let placement;
             if (existing.items.length) {
@@ -379,7 +433,21 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 });
             }
 
-            res.json(placementResponse(placement, event));
+            if (!existing.items.length || existing.items[0].column !== column.id) {
+                rebroadcast(req.body.event);
+            }
+
+            const response = placementResponse(placement, event);
+            boardControl.deliver(
+                config.etlEvents.boardEvent(
+                    existing.items.length ? ETLEventAction.Update : ETLEventAction.Create,
+                    Number(board.channel),
+                    response,
+                ),
+                `Placement ${placement.id}`,
+            );
+
+            res.json(response);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -406,13 +474,20 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            let { placement } = await boardControl.placementAccess(user, req.params.placement);
+            const access = await boardControl.placementAccess(user, req.params.placement);
+            let { placement } = access;
+
+            const moved = req.body.column !== undefined && req.body.column !== placement.column;
 
             if (req.body.column !== undefined) {
                 const column = await config.models.CoreEventBoardColumn.from(req.body.column);
 
                 if (column.board !== placement.board) {
                     throw new Err(400, null, 'The Column belongs to a different Board');
+                }
+
+                if (column.id !== placement.column) {
+                    await ensureRequiredForms(column.id, placement.event);
                 }
             }
 
@@ -423,10 +498,21 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 });
             }
 
-            res.json(placementResponse(
+            if (moved) rebroadcast(placement.event);
+
+            const response = placementResponse(
                 placement,
-                await config.models.CoreEvent.augmented_from(placement.event),
-            ));
+                await config.models.CoreEntity.augmented_from(placement.event),
+            );
+
+            if (Object.keys(req.body).length > 0) {
+                boardControl.deliver(
+                    config.etlEvents.boardEvent(ETLEventAction.Update, Number(access.board.channel), response),
+                    `Placement ${placement.id}`,
+                );
+            }
+
+            res.json(response);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -446,9 +532,18 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            await boardControl.placementAccess(user, req.params.placement);
+            const { placement, board } = await boardControl.placementAccess(user, req.params.placement);
+
+            const event = await config.models.CoreEntity.augmented_from(placement.event);
 
             await config.models.CoreEventBoardEvent.delete(req.params.placement);
+
+            rebroadcast(placement.event);
+
+            boardControl.deliver(
+                config.etlEvents.boardEvent(ETLEventAction.Delete, Number(board.channel), placementResponse(placement, event)),
+                `Placement ${placement.id}`,
+            );
 
             res.json({ status: 200, message: 'Event removed from Board' });
         } catch (err) {
@@ -505,7 +600,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 });
             }
 
-            res.json(boardResponse(board));
+            const response = boardResponse(board);
+
+            if (Object.keys(req.body).length > 0) {
+                boardControl.deliver(config.etlEvents.board(ETLEventAction.Update, response), `Board ${board.id}`);
+            }
+
+            res.json(response);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -539,6 +640,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             }
 
             await config.models.CoreEventBoard.delete(req.params.board);
+
+            boardControl.deliver(config.etlEvents.board(ETLEventAction.Delete, boardResponse(board)), `Board ${board.id}`);
 
             res.json({ status: 200, message: 'Board Deleted' });
         } catch (err) {

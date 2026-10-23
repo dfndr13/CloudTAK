@@ -1,26 +1,59 @@
 import { Static, Type } from '@sinclair/typebox';
 import { BasemapProtocol, TileJSONActions } from '../lib/interface-basemap.js';
 import { fromProtocol } from '../lib/factory-basemap.js';
+import { basemapTileJSON, profileAssetTileJSON } from '../lib/tilejson.js';
 import type ConfigStateless from '../config.js';
-import ProfileControl from '../lib/control/profile.js';
+import ProfileOverlayControl, { DUPLICATE_CONSTRAINT } from '../../common/control/profile-overlay.js';
 import Schema from '@openaddresses/batch-schema';
-import S3 from '../../common/aws/s3.js';
 import Err from '@openaddresses/batch-error';
-import Auth from '../../common/auth.js';
+import Auth, { AuthUser } from '../../common/auth.js';
 import { BasemapTerrain_Encoding } from '../../common/enums.js';
 import { ProfileOverlay } from '../../common/schema.js';
-import path from 'node:path';
 import { StandardResponse, ProfileOverlayResponse } from '../../common/types.js';
 import ConnectionEvents, { ConnectionEventDataType, ConnectionEventAction } from '../lib/connection-events.js';
 import { sql } from 'drizzle-orm';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 import * as Default from '../lib/limits.js';
+
+// Upstream documents vary in shape: only `tiles` is required. Response validation strips unlisted keys.
+const OverlayTileJSON = Type.Object({
+    tilejson: Type.Optional(Type.String()),
+    version: Type.Optional(Type.String()),
+    scheme: Type.Optional(Type.String()),
+    name: Type.Optional(Type.String()),
+    description: Type.Optional(Type.String()),
+    attribution: Type.Optional(Type.String()),
+    type: Type.Optional(Type.String()),
+    format: Type.Optional(Type.String()),
+    encoding: Type.Optional(Type.String()),
+    tileSize: Type.Optional(Type.Number()),
+    minzoom: Type.Optional(Type.Number()),
+    maxzoom: Type.Optional(Type.Number()),
+    tiles: Type.Array(Type.String()),
+    bounds: Type.Optional(Type.Array(Type.Number())),
+    center: Type.Optional(Type.Array(Type.Number())),
+    vector_layers: Type.Optional(Type.Array(Type.Object({
+        id: Type.String(),
+        fields: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+        minzoom: Type.Optional(Type.Number()),
+        maxzoom: Type.Optional(Type.Number()),
+        description: Type.Optional(Type.String()),
+    }))),
+});
 
 const AugmentedProfileOverlayResponse = Type.Composite([
     ProfileOverlayResponse,
     Type.Object({
         actions: TileJSONActions,
+        attribution: Type.String({ default: '', description: 'Attribution of the underlying basemap, empty if not applicable' }),
         encoding: Type.Optional(Type.Enum(BasemapTerrain_Encoding)),
+        tilejson: Type.Union([Type.Null(), OverlayTileJSON], {
+            description: `
+                TileJSON for the overlay's tile source, derived from the underlying Basemap or hosted asset
+                at request time - never persisted server-side. Tile URLs are token-free; clients append
+                their own session token. Null for overlays without a tile source (missions) or when the
+                document could not be resolved.
+            `,
+        }),
     }),
 ]);
 
@@ -30,19 +63,69 @@ type SerializableProfileOverlay = Omit<Static<typeof ProfileOverlayResponse>, 'o
 
 function serializeOverlay(
     overlay: SerializableProfileOverlay,
-    actions: Static<typeof TileJSONActions>,
-    encoding?: BasemapTerrain_Encoding,
+    extras: {
+        actions: Static<typeof TileJSONActions>;
+        encoding?: BasemapTerrain_Encoding;
+        attribution?: string;
+        tilejson: Static<typeof OverlayTileJSON> | null;
+    },
 ): Static<typeof AugmentedProfileOverlayResponse> {
     return {
         ...overlay,
         opacity: Number(overlay.opacity),
-        actions,
-        ...(encoding ? { encoding } : {}),
+        actions: extras.actions,
+        attribution: extras.attribution ?? '',
+        tilejson: extras.tilejson,
+        ...(extras.encoding ? { encoding: extras.encoding } : {}),
     } as Static<typeof AugmentedProfileOverlayResponse>;
 }
 
+// Null on failure so an unreachable upstream never drops the overlay from the list
+async function resolveTileJSON(
+    overlayId: number,
+    resolve: () => Promise<Static<typeof OverlayTileJSON>>,
+): Promise<Static<typeof OverlayTileJSON> | null> {
+    try {
+        return await resolve();
+    } catch (err) {
+        console.error(`Could not resolve TileJSON for overlay ${overlayId}`, err);
+        return null;
+    }
+}
+
+async function augmentOverlay(
+    config: ConfigStateless,
+    overlay: SerializableProfileOverlay,
+    user: AuthUser,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    basemap?: any,
+): Promise<Static<typeof AugmentedProfileOverlayResponse>> {
+    if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {
+        if (!overlay.mode_id) throw new Err(500, null, 'Overlay missing mode_id');
+        if (!basemap) basemap = await config.models.Basemap.from(parseInt(overlay.mode_id));
+
+        return serializeOverlay(overlay, {
+            actions: fromProtocol(basemap.protocol, basemap).actions(),
+            encoding: basemap.type === 'raster-dem' ? basemap.encoding : undefined,
+            attribution: basemap.attribution || '',
+            tilejson: await resolveTileJSON(overlay.id, () => basemapTileJSON(config, basemap, { upstreamToken: user.token })),
+        });
+    }
+
+    let tilejson: Static<typeof OverlayTileJSON> | null = null;
+    if (overlay.mode === 'profile') {
+        tilejson = await resolveTileJSON(overlay.id, () => profileAssetTileJSON(config, {
+            email: user.email,
+            owner: overlay.username,
+            asset: ProfileOverlayControl.assetName(overlay),
+        }));
+    }
+
+    return serializeOverlay(overlay, { actions: fromProtocol().actions(), tilejson });
+}
+
 export default async function router(schema: Schema, config: ConfigStateless) {
-    const profileControl = new ProfileControl(config);
+    const overlayControl = new ProfileOverlayControl(config);
 
     await schema.get('/profile/overlay', {
         name: 'Get Overlays',
@@ -75,6 +158,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
+
+            await overlayControl.ensureDefaultTerrain(user.email);
 
             const [overlays, terrain, snapping] = await Promise.all([
                 config.models.ProfileOverlay.list({
@@ -110,67 +195,45 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 snapping: snapping > 0,
             };
 
-            // Only fetch the profile and initialize the TAK API when mission overlays are present
-            const hasMissionOverlays = overlays.items.some(item => item.mode === 'mission' && item.mode_id);
-            let api: TAKAPI | null = null;
-            if (hasMissionOverlays) {
-                const profile = await config.models.Profile.from(user.email);
-                api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(profile.auth.cert, profile.auth.key));
-            }
+            const pruned = await overlayControl.prune(user.email, overlays.items);
 
-            // Check all overlays in parallel
-            const results = await Promise.all(overlays.items.map(async (item) => {
-                if (item.mode === 'profile') {
-                    if (!(await S3.exists(`profile/${item.username}/${path.parse(item.url.replace(/\/tile$/, '')).name}.pmtiles`))) {
-                        return { keep: false as const, item };
-                    }
-                } else if (item.mode === 'data') {
-                    if (!(await S3.exists(`data/${item.mode_id}/${path.parse(item.url.replace(/\/tile$/, '')).name}.pmtiles`))) {
-                        return { keep: false as const, item };
-                    }
-                } else if (item.mode === 'basemap' || item.mode === 'overlay') {
-                    try {
-                        if (!item.mode_id) throw new Error('mode_id is required');
-                        const basemap = await config.models.Basemap.from(parseInt(item.mode_id));
-                        return {
-                            keep: true as const,
-                            item,
-                            actions: fromProtocol(basemap.protocol, basemap).actions(),
-                            encoding: basemap.type === 'raster-dem' ? basemap.encoding : undefined,
-                        };
-                    } catch (err) {
-                        console.error('Could not find basemap', err);
-                        return { keep: false as const, item };
-                    }
-                } else if (item.mode === 'mission' && item.mode_id && api) {
-                    const subscription = await profileControl.subscription(user.email, item.name);
-                    if (!(await api.Mission.access(item.mode_id, subscription))) {
-                        return { keep: false as const, item };
-                    }
-                }
-
-                return { keep: true as const, item, actions: fromProtocol().actions() };
-            }));
-
-            // Batch all deletions in parallel
-            await Promise.all(
-                results.filter(r => !r.keep).map(r => config.models.ProfileOverlay.delete(r.item.id)),
-            );
-
-            let total = overlays.total;
-            const removed: Static<typeof ProfileOverlayResponse>[] = [];
-            const items: Static<typeof AugmentedProfileOverlayResponse>[] = [];
-
-            for (const result of results) {
-                if (!result.keep) {
-                    removed.push({ ...result.item, opacity: Number(result.item.opacity) });
-                    total--;
-                } else {
-                    items.push(serializeOverlay(result.item, result.actions, result.encoding));
-                }
-            }
+            const items = await Promise.all(pruned.kept.map(({ overlay, basemap }) => augmentOverlay(config, overlay, user, basemap)));
+            const removed = pruned.removed.map(overlay => ({ ...overlay, opacity: Number(overlay.opacity) }));
+            const total = overlays.total - removed.length;
 
             res.json({ removed, total, items, available });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.patch('/profile/overlay/order', {
+        name: 'Order Overlays',
+        group: 'ProfileOverlay',
+        description: `
+            Persist the stack order of the user's overlays.
+
+            Ids are given bottom-first and each overlay's pos is set to its index. Basemaps keep
+            their fixed position and may be omitted.
+        `,
+        body: Type.Object({
+            ids: Type.Array(Type.Integer()),
+        }),
+        res: Type.Object({
+            items: Type.Array(ProfileOverlayResponse),
+        }),
+    }, async (req, res) => {
+        try {
+            const user = await Auth.as_user(config, req);
+
+            const items = await overlayControl.reorder(user.email, req.body.ids);
+
+            // Other sessions re-list rather than receiving one event per overlay
+            ConnectionEvents.user(config, user, ConnectionEventDataType.OVERLAY, ConnectionEventAction.UPDATE);
+
+            res.json({
+                items: items.map(overlay => ({ ...overlay, opacity: Number(overlay.opacity) })),
+            });
         } catch (err) {
             Err.respond(err, res);
         }
@@ -188,21 +251,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const overlay = await config.models.ProfileOverlay.from(req.params.overlay);
-            if (overlay.username !== user.email) throw new Err(401, null, 'Cannot get another\'s overlay');
+            const overlay = await overlayControl.from(user.email, req.params.overlay);
 
-            if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {
-                if (!overlay.mode_id) throw new Err(500, null, 'Overlay missing mode_id');
-                const basemap = await config.models.Basemap.from(parseInt(overlay.mode_id));
-
-                res.json(serializeOverlay(
-                    overlay,
-                    fromProtocol(basemap.protocol, basemap).actions(),
-                    basemap.type === 'raster-dem' ? basemap.encoding : undefined,
-                ));
-            } else {
-                res.json(serializeOverlay(overlay, fromProtocol().actions()));
-            }
+            res.json(await augmentOverlay(config, overlay, user));
         } catch (err) {
             Err.respond(err, res);
         }
@@ -233,46 +284,14 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            let overlay = await config.models.ProfileOverlay.from(req.params.overlay);
-            if (overlay.username !== user.email) throw new Err(401, null, 'Cannot edit another\'s overlay');
-
             if (req.body.styles && req.body.styles.length) {
-                BasemapProtocol.isValidStyle(req.body.type || overlay.type, req.body.styles);
+                const type = req.body.type || (await overlayControl.from(user.email, req.params.overlay)).type;
+                BasemapProtocol.isValidStyle(type, req.body.styles);
             }
 
-            if (overlay.mode === 'profile' && req.body.url && req.body.url.startsWith('http')) {
-                const url = new URL(req.body.url);
-                req.body.url = url.pathname;
-            }
+            const overlay = await overlayControl.patch(user.email, req.params.overlay, req.body);
 
-            if (req.body.active && overlay.mode !== 'mission') {
-                throw new Err(400, null, 'Only mission overlays can be made active');
-            } else if (req.body.active) {
-                await config.models.ProfileOverlay.commit(sql`
-                    username = ${user.email}
-                `, {
-                    active: false,
-                });
-            }
-
-            overlay = await config.models.ProfileOverlay.commit(req.params.overlay, {
-                ...req.body,
-                opacity: req.body.opacity !== undefined ? String(req.body.opacity) : undefined,
-            });
-
-            let serialized: Static<typeof AugmentedProfileOverlayResponse>;
-            if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {
-                if (!overlay.mode_id) throw new Err(500, null, 'Overlay missing mode_id');
-                const basemap = await config.models.Basemap.from(parseInt(overlay.mode_id));
-
-                serialized = serializeOverlay(
-                    overlay,
-                    fromProtocol(basemap.protocol, basemap).actions(),
-                    basemap.type === 'raster-dem' ? basemap.encoding : undefined,
-                );
-            } else {
-                serialized = serializeOverlay(overlay, fromProtocol().actions());
-            }
+            const serialized = await augmentOverlay(config, overlay, user);
 
             // Include the serialized overlay so receiving clients can apply
             // it directly instead of re-listing overlays (which is slow due
@@ -288,7 +307,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.post('/profile/overlay', {
         name: 'Create Overlay',
         group: 'ProfileOverlay',
-        description: 'Create Profile Overlay',
+        description: `
+            Create Profile Overlay
+
+            Overlays are unique per user & URL. If an overlay with the given URL already exists
+            the request is treated as a patch: the supplied fields are applied to the existing
+            overlay and it is returned. The mode of an existing overlay cannot be changed.
+        `,
         body: Type.Object({
             name: Type.String(),
             active: Type.Optional(Type.Boolean()),
@@ -310,91 +335,29 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const user = await Auth.as_user(config, req);
 
             if (req.body.styles && req.body.styles.length) {
-                BasemapProtocol.isValidStyle(req.body.type || 'raster', req.body.styles);
+                const existing = await overlayControl.byUrl(user.email, ProfileOverlayControl.normalizeUrl(req.body.mode, req.body.url));
+                BasemapProtocol.isValidStyle(req.body.type || existing?.type || 'raster', req.body.styles);
             }
 
-            if (req.body.mode === 'basemap') {
-                const existing = await config.models.ProfileOverlay.count({
-                    where: sql`
-                        username = ${user.email}
-                        AND mode = 'basemap'
-                    `,
-                });
+            const { overlay, created } = await overlayControl.upsert(user.email, req.body);
 
-                if (existing > 0) {
-                    throw new Err(400, null, 'A basemap overlay already exists - only a single basemap is allowed');
-                }
-            }
-
-            if (req.body.active && req.body.mode !== 'mission') {
-                throw new Err(400, null, 'Only mission overlays can be made active');
-            } else if (req.body.active) {
-                await config.models.ProfileOverlay.commit(sql`
-                    username = ${user.email}
-                `, {
-                    active: false,
-                });
-            }
-
-            let overlay;
-            if (req.body.mode === 'mission') {
-                if (!req.body.mode_id) throw new Err(400, null, 'Mode: Mission must have mode_id set');
-
-                const profile = await config.models.Profile.from(user.email);
-                const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(profile.auth.cert, profile.auth.key));
-
-                const sub = await api.Mission.subscribe(req.body.mode_id, {
-                    uid: `ANDROID-CloudTAK-${user.email}`,
-                }, {
-                    token: req.body.token,
-                });
-
-                overlay = await config.models.ProfileOverlay.generate({
-                    ...req.body,
-                    opacity: String(req.body.opacity || 1),
-                    username: user.email,
-                    token: sub.data.token,
-                });
-            } else {
-                if (req.body.mode === 'profile' && req.body.url.startsWith('http')) {
-                    const url = new URL(req.body.url);
-                    req.body.url = url.pathname;
-                }
-
-                if ((req.body.mode === 'basemap' || req.body.mode === 'overlay') && req.body.mode_id && !req.body.type) {
-                    const basemapForType = await config.models.Basemap.from(parseInt(req.body.mode_id));
-                    req.body.type = basemapForType.type;
-                }
-
-                overlay = await config.models.ProfileOverlay.generate({
-                    ...req.body,
-                    opacity: String(req.body.opacity || 1),
-                    username: user.email,
-                });
-            }
-
-            let serialized: Static<typeof AugmentedProfileOverlayResponse>;
-            if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {
-                if (!overlay.mode_id) throw new Err(500, null, 'Overlay missing mode_id');
-                const basemap = await config.models.Basemap.from(parseInt(overlay.mode_id));
-
-                serialized = serializeOverlay(
-                    overlay,
-                    fromProtocol(basemap.protocol, basemap).actions(),
-                    basemap.type === 'raster-dem' ? basemap.encoding : undefined,
-                );
-            } else {
-                serialized = serializeOverlay(overlay, fromProtocol().actions());
-            }
+            const serialized = await augmentOverlay(config, overlay, user);
 
             // Include the serialized overlay so receiving clients can apply
             // it directly instead of re-listing overlays (which is slow due
             // to per-overlay existence checks)
-            ConnectionEvents.user(config, user, ConnectionEventDataType.OVERLAY, ConnectionEventAction.CREATE, overlay.id, serialized);
+            ConnectionEvents.user(
+                config,
+                user,
+                ConnectionEventDataType.OVERLAY,
+                created ? ConnectionEventAction.CREATE : ConnectionEventAction.UPDATE,
+                overlay.id,
+                serialized,
+            );
 
             res.json(serialized);
         } catch (err) {
-            if (String(err).includes('duplicate key value violates unique constraint')) {
+            if (String(err).includes(DUPLICATE_CONSTRAINT)) {
                 Err.respond(new Err(400, err instanceof Error ? err : new Error(String(err)), 'Overlay appears to exist - cannot add duplicate'), res);
             } else {
                 Err.respond(err, res);
@@ -414,30 +377,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const overlay = await config.models.ProfileOverlay.from(parseInt(String(req.query.id)));
-
-            if (overlay.username !== user.email) {
-                throw new Err(403, null, 'Cannot delete anothers overlays');
-            }
-
-            await config.models.ProfileOverlay.delete(overlay.id);
-
-            if (overlay.mode === 'mission' && overlay.mode_id) {
-                const profile = await config.models.Profile.from(user.email);
-                const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(profile.auth.cert, profile.auth.key));
-
-                try {
-                    await api.Mission.unsubscribe(overlay.mode_id, {
-                        uid: `ANDROID-CloudTAK-${user.email}`,
-                    }, {
-                        token: overlay.token || undefined,
-                    });
-                } catch (err) {
-                    // Currently ignored as this usually just means the Mission has been deleted
-                    // TODO Ask ARA to return a 4xx error code
-                    console.error(err);
-                }
-            }
+            const overlay = await overlayControl.delete(user.email, parseInt(String(req.query.id)));
 
             ConnectionEvents.user(config, user, ConnectionEventDataType.OVERLAY, ConnectionEventAction.DELETE, overlay.id);
 

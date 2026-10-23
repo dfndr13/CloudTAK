@@ -109,7 +109,7 @@
         "query": false,
         "res": true
     },
-    "GET /config/webhooks": {
+    "GET /config/layer": {
         "body": false,
         "query": false,
         "res": true
@@ -133,11 +133,6 @@
         "body": false,
         "query": true,
         "res": false
-    },
-    "GET /connection/:connectionid/channel": {
-        "body": false,
-        "query": false,
-        "res": true
     },
     "GET /connection/:connectionid/data/:dataid/asset": {
         "body": false,
@@ -236,6 +231,31 @@
     },
     "PUT /connection/:connectionid/layer/:layerid/outgoing/ephemeral": {
         "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/incoming/mapping": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/incoming/mapping": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/incoming/mapping/:mappingid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/layer/:layerid/incoming/mapping/:mappingid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/layer/:layerid/incoming/mapping/:mappingid": {
+        "body": false,
         "query": false,
         "res": true
     },
@@ -339,6 +359,11 @@
         "query": false,
         "res": true
     },
+    "POST /connection/:connectionid/submit": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
     "GET /connection/:connectionid/token": {
         "body": false,
         "query": true,
@@ -419,6 +444,16 @@
         "query": false,
         "res": true
     },
+    "GET /connection/:connectionid/channel": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/channel": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "GET /connection/:connectionid/auth": {
         "body": false,
         "query": true,
@@ -455,6 +490,31 @@
         "res": true
     },
     "DELETE /core/device/:device": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/event/:event/assignment": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /core/event/:event/assignment/:assignment": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /core/event/:event/assignment": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /core/event/:event/assignment/:assignment": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /core/event/:event/assignment/:assignment": {
         "body": false,
         "query": false,
         "res": true
@@ -524,6 +584,31 @@
         "query": false,
         "res": true
     },
+    "GET /core/event/:event/effect": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /core/event/:event/effect/:effect": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /core/event/:event/effect": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /core/event/:event/effect/:effect": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /core/event/:event/effect/:effect": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /core/event": {
         "body": false,
         "query": true,
@@ -545,6 +630,86 @@
         "res": true
     },
     "DELETE /core/event/:event": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /board/column/:column/form": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /board/column/:column/form": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /board/column/:column/form/:form": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/event/:event/response": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /core/form/:form/response": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /core/form/:form/response": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /core/form/:form/response/:response": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /core/form/:form/response/:response": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /core/form/:form/response/:response": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/form": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /core/form/:form": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /core/form": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /core/form/:form": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /core/form/:form": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/schema": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/schema/:id": {
         "body": false,
         "query": false,
         "res": true
@@ -679,6 +844,56 @@
         "query": false,
         "res": true
     },
+    "GET /integration": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /integration": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /integration/:integrationid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/raw": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/raw/:prefix": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/raw/:prefix/version/:version": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /integration/raw/:prefix/version/:version": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/:integrationid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /integration/:integrationid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/:integrationid/readme": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /layer": {
         "body": false,
         "query": true,
@@ -744,6 +959,11 @@
         "query": false,
         "res": true
     },
+    "POST /login/refresh": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "GET /login": {
         "body": false,
         "query": false,
@@ -774,62 +994,87 @@
         "query": true,
         "res": false
     },
-    "GET /marti/missions/:name/layer": {
+    "GET /marti/missions/:guid/layer": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /marti/missions/:name/layer/:layerid": {
+    "GET /marti/missions/:guid/layer/:layerid": {
         "body": false,
         "query": false,
         "res": true
     },
-    "POST /marti/missions/:name/layer": {
+    "POST /marti/missions/:guid/layer": {
         "body": true,
         "query": false,
         "res": true
     },
-    "PUT /marti/missions/:name/layer/:uid/cot": {
+    "PUT /marti/missions/:guid/layer/:uid/cot": {
         "body": true,
         "query": false,
         "res": true
     },
-    "DELETE /marti/missions/:name/layer/:uid/cot/:cotuid": {
+    "DELETE /marti/missions/:guid/layer/:uid/cot/:cotuid": {
         "body": false,
         "query": false,
         "res": true
     },
-    "PATCH /marti/missions/:name/layer/:uid": {
+    "PATCH /marti/missions/:guid/layer/:uid": {
         "body": true,
         "query": false,
         "res": true
     },
-    "DELETE /marti/missions/:name/layer/:uid": {
+    "DELETE /marti/missions/:guid/layer/:uid": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /marti/missions/:name/log": {
+    "GET /marti/missions/:guid/log": {
         "body": false,
         "query": true,
         "res": true
     },
-    "POST /marti/missions/:name/log": {
+    "POST /marti/missions/:guid/log": {
         "body": true,
         "query": false,
         "res": true
     },
-    "PATCH /marti/missions/:name/log/:logid": {
+    "PATCH /marti/missions/:guid/log/:logid": {
         "body": true,
         "query": false,
         "res": true
     },
-    "DELETE /marti/missions/:name/log/:log": {
+    "DELETE /marti/missions/:guid/log/:log": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /marti/missions/:name": {
+    "GET /marti/missions/:guid/property": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/missions/:guid/property/:key": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /marti/missions/:guid/property": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/property/:key": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/property": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:guid": {
         "body": false,
         "query": true,
         "res": true
@@ -839,22 +1084,27 @@
         "query": false,
         "res": true
     },
+    "PUT /marti/missions/:guid/cot": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "DELETE /marti/missions/:guid/cot/:uid": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /marti/missions/:name/qr": {
+    "GET /marti/missions/:guid/qr": {
         "body": false,
         "query": false,
         "res": false
     },
-    "GET /marti/missions/:name/changes": {
+    "GET /marti/missions/:guid/changes": {
         "body": false,
         "query": true,
         "res": true
     },
-    "DELETE /marti/missions/:name": {
+    "DELETE /marti/missions/:guid": {
         "body": false,
         "query": true,
         "res": true
@@ -864,7 +1114,7 @@
         "query": false,
         "res": true
     },
-    "PATCH /marti/missions/:name": {
+    "PATCH /marti/missions/:guid": {
         "body": true,
         "query": false,
         "res": true
@@ -874,47 +1124,47 @@
         "query": true,
         "res": true
     },
-    "GET /marti/missions/:name/archive": {
+    "GET /marti/missions/:guid/archive": {
         "body": false,
         "query": true,
         "res": false
     },
-    "GET /marti/missions/:name/role": {
+    "GET /marti/missions/:guid/role": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /marti/missions/:name/subscriptions": {
+    "GET /marti/missions/:guid/subscriptions": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /marti/missions/:name/subscriptions/roles": {
+    "GET /marti/missions/:guid/subscriptions/roles": {
         "body": false,
         "query": false,
         "res": true
     },
-    "PUT /marti/missions/:name/role": {
+    "PUT /marti/missions/:guid/role": {
         "body": true,
         "query": false,
         "res": true
     },
-    "GET /marti/missions/:name/contacts": {
+    "GET /marti/missions/:guid/contacts": {
         "body": false,
         "query": false,
         "res": true
     },
-    "PUT /marti/missions/:name/upload": {
+    "PUT /marti/missions/:guid/upload": {
         "body": true,
         "query": false,
         "res": true
     },
-    "POST /marti/missions/:name/upload": {
+    "POST /marti/missions/:guid/upload": {
         "body": false,
         "query": true,
         "res": true
     },
-    "DELETE /marti/missions/:name/upload/:hash": {
+    "DELETE /marti/missions/:guid/upload/:hash": {
         "body": false,
         "query": false,
         "res": true
@@ -1239,9 +1489,19 @@
         "query": false,
         "res": true
     },
+    "POST /profile/location": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "GET /profile/overlay": {
         "body": false,
         "query": true,
+        "res": true
+    },
+    "PATCH /profile/overlay/order": {
+        "body": true,
+        "query": false,
         "res": true
     },
     "GET /profile/overlay/:overlay": {
@@ -1359,6 +1619,91 @@
         "query": false,
         "res": true
     },
+    "GET /proxy/image": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "GET /scim/v2/ServiceProviderConfig": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /scim/v2/ResourceTypes": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /scim/v2/Schemas": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /scim/v2/Users": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /scim/v2/Users": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /scim/v2/Users/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /scim/v2/Users/:id": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /scim/v2/Users/:id": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /scim/v2/Groups": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /scim/v2/Groups": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /scim/v2/Groups/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /scim/v2/Groups/:id": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /scim/v2/Groups/:id": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /scim/v2/Groups/:id": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
+    "DELETE /scim/v2/Users/:id": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
+    "GET /scope": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /server/injector": {
         "body": false,
         "query": false,
@@ -1409,56 +1754,6 @@
         "query": false,
         "res": true
     },
-    "GET /task": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /task": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /task/:taskid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /task/raw": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /task/raw/:task": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /task/raw/:task/version/:version": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "DELETE /task/raw/:task/version/:version": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /task/:task": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PATCH /task/:task": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /task/:task/readme": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
     "GET /user": {
         "body": false,
         "query": true,
@@ -1474,9 +1769,19 @@
         "query": false,
         "res": true
     },
+    "DELETE /user/:username": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
     "GET /user/:username/session": {
         "body": false,
         "query": true,
+        "res": true
+    },
+    "DELETE /user/:username/session/:session": {
+        "body": false,
+        "query": false,
         "res": true
     },
     "POST /video/auth": {
@@ -1534,16 +1839,6 @@
         "query": false,
         "res": true
     },
-    "GET /manifest.webmanifest": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /manifest.webmanifest/logos/:size": {
-        "body": false,
-        "query": false,
-        "res": false
-    },
     "GET /type/cot": {
         "body": false,
         "query": true,
@@ -1561,6 +1856,76 @@
     },
     "GET /type/cot/:type": {
         "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /manifest.webmanifest": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /manifest.webmanifest/logos/:size": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
+    "GET /simulator/units": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /simulator/units/:uid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /simulator/units/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/settings": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /dispatcher/settings/:key": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/events": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /dispatcher/events": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/events/:eventid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /dispatcher/events/:eventid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/events/:eventid/incidents": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/events/:eventid/incidents": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/incidents/:incidentid": {
+        "body": true,
         "query": false,
         "res": true
     },
@@ -1645,51 +2010,6 @@
         "res": true
     },
     "POST /replay/import": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/settings": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PUT /dispatcher/settings/:key": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/events": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /dispatcher/events": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PATCH /dispatcher/events/:eventid": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /dispatcher/events/:eventid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/events/:eventid/incidents": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /dispatcher/events/:eventid/incidents": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PATCH /dispatcher/incidents/:incidentid": {
         "body": true,
         "query": false,
         "res": true
@@ -1807,21 +2127,6 @@
     "GET /search/suggest": {
         "body": false,
         "query": true,
-        "res": true
-    },
-    "GET /simulator/units": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PUT /simulator/units/:uid": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /simulator/units/:uid": {
-        "body": false,
-        "query": false,
         "res": true
     }
 }

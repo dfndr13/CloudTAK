@@ -8,7 +8,7 @@ import { VideoLease } from '../../../common/schema.js';
 import { VideoLeaseResponse } from '../../../common/types.js';
 import { VideoLease_SourceType } from '../../../common/enums.js';
 import { fetch, isSafeUrl } from '@tak-ps/node-safeurl';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+import TAKServerControl from '../../../common/control/takserver.js';
 
 export enum ProtocolPopulation {
     TEMPLATE,
@@ -289,25 +289,37 @@ export default class VideoServiceControl {
         if (!res.ok) throw new Err(500, null, await res.text());
         const body = await res.typed(VideoConfig);
 
-        // TODO support paging
-        const urlPaths = new URL('/path', video.url);
-        urlPaths.port = '9997';
-
-        const resPaths = await fetch(urlPaths, {
-            headers: Object.fromEntries(headers.entries()),
-            safeUrlAllow: [new URL(video.url!).hostname],
-        });
-        if (!resPaths.ok) throw new Err(500, null, await resPaths.text());
-
-        const paths = await resPaths.typed(PathsList);
+        const paths = await this.paths();
 
         return {
             configured: video.configured,
             url: video.url,
             external: video.publicUrl,
             config: body,
-            paths: paths.items,
+            paths,
         };
+    }
+
+    /**
+     * List all Paths currently known to the Media Server
+     */
+    async paths(): Promise<Static<typeof PathListItem>[]> {
+        const video = await this.settings();
+        if (!video.configured) return [];
+
+        const headers = this.headers(video.token);
+
+        // TODO support paging
+        const url = new URL('/path', video.url);
+        url.port = '9997';
+
+        const res = await fetch(url, {
+            headers: Object.fromEntries(headers.entries()),
+            safeUrlAllow: [new URL(video.url!).hostname],
+        });
+        if (!res.ok) throw new Err(500, null, await res.text());
+
+        return (await res.typed(PathsList)).items;
     }
 
     async protocols(
@@ -385,29 +397,30 @@ export default class VideoServiceControl {
             const url = new URL(c.external.replace(/^http(s)?:/, 'srt:'));
             url.port = c.config.srtAddress.replace(':', '');
 
+            // MediaMTX streamid format: <read|publish>:<path>[:<user>:<pass>]
+            let streamid: string;
+            if (populated === ProtocolPopulation.READ) {
+                streamid = `read:${lease.path}`;
+            } else if (populated === ProtocolPopulation.WRITE) {
+                streamid = `publish:${lease.path}`;
+            } else {
+                streamid = `{{mode}}:${lease.path}`;
+            }
+
             if (lease.stream_user && lease.read_user) {
                 if (populated === ProtocolPopulation.READ) {
-                    protocols.srt = {
-                        name: 'Secure Reliable Transport (SRT)',
-                        url: String(url) + `?streamid={{mode}}:${lease.path}:${lease.read_user}}:${lease.read_pass}`,
-                    };
+                    streamid += `:${lease.read_user}:${lease.read_pass}`;
                 } else if (populated === ProtocolPopulation.WRITE) {
-                    protocols.srt = {
-                        name: 'Secure Reliable Transport (SRT)',
-                        url: String(url) + `?streamid={{mode}}:${lease.path}:${lease.stream_user}}:${lease.stream_pass}`,
-                    };
+                    streamid += `:${lease.stream_user}:${lease.stream_pass}`;
                 } else {
-                    protocols.srt = {
-                        name: 'Secure Reliable Transport (SRT)',
-                        url: String(url) + `?streamid={{mode}}:${lease.path}:{{username}}:{{password}}`,
-                    };
+                    streamid += ':{{username}}:{{password}}';
                 }
-            } else {
-                protocols.srt = {
-                    name: 'Secure Reliable Transport (SRT)',
-                    url: String(url) + `?streamid={{mode}}:${lease.path}`,
-                };
             }
+
+            protocols.srt = {
+                name: 'Secure Reliable Transport (SRT)',
+                url: String(url) + `?streamid=${streamid}`,
+            };
         }
 
         if (c.config && c.config.hls) {
@@ -464,13 +477,51 @@ export default class VideoServiceControl {
             const url = new URL(`/${lease.path}`, c.external);
             url.port = c.config.webrtcAddress.replace(':', '');
 
-            protocols.webrtc = {
-                name: 'Web Real-Time Communication (WebRTC)',
-                url: String(url),
-            };
+            if (lease.stream_user && lease.read_user) {
+                if (populated === ProtocolPopulation.READ && lease.read_user && lease.read_pass) {
+                    url.username = lease.read_user;
+                    url.password = lease.read_pass;
+
+                    protocols.webrtc = {
+                        name: 'Web Real-Time Communication (WebRTC)',
+                        url: String(url),
+                    };
+                } else if (populated === ProtocolPopulation.WRITE && lease.stream_user && lease.stream_pass) {
+                    url.username = lease.stream_user;
+                    url.password = lease.stream_pass;
+
+                    protocols.webrtc = {
+                        name: 'Web Real-Time Communication (WebRTC)',
+                        url: String(url),
+                    };
+                } else {
+                    url.username = 'username';
+                    url.password = 'password';
+
+                    protocols.webrtc = {
+                        name: 'Web Real-Time Communication (WebRTC)',
+                        url: String(url).replace(/username:password/, '{{username}}:{{password}}'),
+                    };
+                }
+            } else {
+                protocols.webrtc = {
+                    name: 'Web Real-Time Communication (WebRTC)',
+                    url: String(url),
+                };
+            }
         }
 
         return protocols;
+    }
+
+    /**
+     * Feed URL pushed to the TAK Server Video Manager - SRT is preferred
+     * for low latency with HLS as the fallback
+     */
+    feedUrl(protocols: Static<typeof Protocols>): string {
+        const feed = protocols.srt || protocols.hls;
+        if (!feed) throw new Err(400, null, 'Media Server must support SRT or HLS to publish a video stream');
+        return feed.url;
     }
 
     async updateSecure(
@@ -561,31 +612,21 @@ export default class VideoServiceControl {
         headers.append('Content-Type', 'application/json');
 
         if (lease.publish) {
-            const auth = this.config.serverCert();
-            const api = await TAKAPI.init(
-                new URL(String(this.config.server.api)),
-                new APIAuthCertificate(auth.cert, auth.key),
-            );
+            const api = await new TAKServerControl(this.config).asServer();
 
             try {
-                const protocols = await this.protocols(lease, ProtocolPopulation.READ);
-
-                if (protocols.hls) {
-                    await api.Video.create({
+                await api.Video.create({
+                    uuid: lease.path,
+                    active: true,
+                    alias: lease.name,
+                    groups: [lease.channel!],
+                    feeds: [{
                         uuid: lease.path,
                         active: true,
                         alias: lease.name,
-                        groups: [lease.channel!],
-                        feeds: [{
-                            uuid: lease.path,
-                            active: true,
-                            alias: lease.name,
-                            url: protocols.hls.url,
-                        }],
-                    });
-                } else {
-                    throw new Err(400, null, 'Only HLS shared video streams are supported at this time');
-                }
+                        url: this.feedUrl(await this.protocols(lease, ProtocolPopulation.READ)),
+                    }],
+                });
             } catch (err) {
                 console.error(err);
             }
@@ -703,8 +744,7 @@ export default class VideoServiceControl {
             if (opts.username === lease.username) {
                 return lease;
             } else {
-                const profile = await this.config.models.Profile.from(opts.username);
-                const api = await TAKAPI.init(new URL(String(this.config.server.api)), new APIAuthCertificate(profile.auth.cert, profile.auth.key));
+                const api = await new TAKServerControl(this.config).asUser(opts.username);
                 const groups = (await api.Group.list({ useCache: true }))
                     .data.map(group => group.name);
 
@@ -772,23 +812,18 @@ export default class VideoServiceControl {
         lease = await this.config.models.VideoLease.commit(leaseid, body);
 
         try {
-            const auth = this.config.serverCert();
-            const api = await TAKAPI.init(
-                new URL(String(this.config.server.api)),
-                new APIAuthCertificate(auth.cert, auth.key),
-            );
+            const api = await new TAKServerControl(this.config).asServer();
 
+            // Remove any existing connection - covers publish being toggled off
+            // and channel changes, which the TAK Server Video API cannot apply in place
             try {
                 await api.Video.delete(lease.path);
             } catch (err) {
                 console.error(err);
             }
 
-            // We can't change channels so just delete and recreate
-            try {
-                const protocols = await this.protocols(lease, ProtocolPopulation.READ);
-
-                if (protocols.hls) {
+            if (lease.publish) {
+                try {
                     await api.Video.create({
                         uuid: lease.path,
                         active: true,
@@ -798,14 +833,12 @@ export default class VideoServiceControl {
                             uuid: lease.path,
                             active: true,
                             alias: lease.name,
-                            url: protocols.hls.url,
+                            url: this.feedUrl(await this.protocols(lease, ProtocolPopulation.READ)),
                         }],
                     });
-                } else {
-                    throw new Err(400, null, 'Only HLS shared video streams are supported at this time');
+                } catch (err) {
+                    console.error(err);
                 }
-            } catch (err) {
-                console.error(err);
             }
         } catch (err) {
             console.error(err);
@@ -949,11 +982,7 @@ export default class VideoServiceControl {
         });
 
         try {
-            const auth = this.config.serverCert();
-            const api = await TAKAPI.init(
-                new URL(String(this.config.server.api)),
-                new APIAuthCertificate(auth.cert, auth.key),
-            );
+            const api = await new TAKServerControl(this.config).asServer();
 
             await api.Video.delete(lease.path);
         } catch (err) {

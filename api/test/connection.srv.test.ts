@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert';
 import Flight from './flight.js';
 import fs from 'fs';
-import CP from 'node:child_process';
 import Sinon from 'sinon';
 import S3 from '../common/aws/s3.js';
 
@@ -12,6 +11,7 @@ flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 flight.user({ username: 'user', admin: false });
+flight.integration('test-task');
 
 test('GET: api/connection - No Auth', async () => {
     try {
@@ -244,27 +244,7 @@ let enabledConnId: number = 0;
 
 test('Creating Enabled Connection', async () => {
     try {
-        CP.execSync(`
-            openssl req \
-                -newkey rsa:4096 \
-                -keyout /tmp/cloudtak-test-alice.key \
-                -out /tmp/cloudtak-test-alice.csr \
-                -nodes \
-                -subj "/CN=Alice" \
-                2> /dev/null
-        `);
-
-        CP.execSync(`
-           openssl x509 \
-                -req \
-                -in /tmp/cloudtak-test-alice.csr \
-                -CA ${flight.tak.keys.cert} \
-                -CAkey ${flight.tak.keys.key} \
-                -out /tmp/cloudtak-test-alice.cert \
-                -set_serial 01 \
-                -days 365 \
-                2> /dev/null
-        `);
+        flight.clientCert('alice', '/CN=Alice');
 
         const conn = await flight.fetch('/api/connection', {
             method: 'POST',
@@ -395,6 +375,7 @@ test('GET: api/connection/:connectionid - existing', async () => {
         assert.ok(res.body.certificate.validFrom, 'has validFrom');
         assert.ok(res.body.certificate.validTo, 'has validTo');
         assert.ok(res.body.certificate.subject, 'has subject');
+        assert.equal(typeof res.body.certificate.channels, 'boolean', 'has channels');
         assert.ok(typeof res.body.status === 'string', 'has status');
     } catch (err) {
         assert.ifError(err);
@@ -749,7 +730,8 @@ test('GET: api/connection/:connectionid/auth - Readonly truststore P12 with down
 test('DELETE: api/connection/:connectionid - Fails with active Layer', async () => {
     const layer = await flight.config!.models.Layer.generate({
         name: 'Guard Layer',
-        task: 'test-task',
+        task: 1,
+        version: '1.0.0',
         connection: enabledConnId,
     });
 

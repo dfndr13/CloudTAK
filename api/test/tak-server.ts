@@ -9,6 +9,7 @@ import stream2buffer from '../stateless/lib/stream.js';
 import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
+import withFileLock from './lock.js';
 
 /**
  * Mocking Framework for CloudTAK <=> TAK Server API Interactions
@@ -35,6 +36,12 @@ export default class MockTAKServer {
 
     /** Only the TLS sockets connected to the TAK streaming port */
     streamingSockets: Set<tls.TLSSocket>;
+
+    /**
+     * Writes queued for streaming connections whose TLS 1.3 handshake has
+     * completed on the client but not yet on this server, keyed by client port
+     */
+    pendingStreaming: Map<number, Array<string>>;
 
     defaultMartiResponses: boolean;
     defaultWebtakResponses: boolean;
@@ -80,6 +87,7 @@ export default class MockTAKServer {
 
         this.sockets = new Set();
         this.streamingSockets = new Set();
+        this.pendingStreaming = new Map();
 
         if (opts.defaultMartiResponses) {
             this.mockMartiDefaultResponses();
@@ -92,20 +100,29 @@ export default class MockTAKServer {
         // Generating the CA is comparatively expensive so reuse an existing one,
         // regenerating weekly to stay well clear of certificate expiry
         const maxCAAgeMs = 7 * 24 * 60 * 60 * 1000;
-        if (
-            !fs.existsSync(this.keys.cert)
+        const stale = () => !fs.existsSync(this.keys.cert)
             || !fs.existsSync(this.keys.key)
-            || (Date.now() - fs.statSync(this.keys.cert).mtimeMs) > maxCAAgeMs
-        ) {
-            CP.execSync(`openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 -subj '/CN=localhost' -keyout ${this.keys.key} -out ${this.keys.cert} 2> /dev/null`);
-        }
+            || (Date.now() - fs.statSync(this.keys.cert).mtimeMs) > maxCAAgeMs;
+
+        // Parallel test workers share the CA - regenerate and read it under
+        // a lock so every worker ends up trusting the same certificate
+        const ca = withFileLock('certs', () => {
+            if (stale()) {
+                CP.execSync(`openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 -subj '/CN=localhost' -keyout ${this.keys.key} -out ${this.keys.cert} 2> /dev/null`);
+            }
+
+            return {
+                cert: fs.readFileSync(this.keys.cert),
+                key: fs.readFileSync(this.keys.key),
+            };
+        });
 
         this.streaming = tls.createServer({
-            cert: fs.readFileSync(this.keys.cert),
-            key: fs.readFileSync(this.keys.key),
+            cert: ca.cert,
+            key: ca.key,
             requestCert: true,
             rejectUnauthorized: true,
-            ca: fs.readFileSync(this.keys.cert),
+            ca: ca.cert,
         }, (socket) => {
             this.sockets.add(socket);
             this.streamingSockets.add(socket);
@@ -113,6 +130,23 @@ export default class MockTAKServer {
                 this.sockets.delete(socket);
                 this.streamingSockets.delete(socket);
             });
+
+            const queued = socket.remotePort !== undefined ? this.pendingStreaming.get(socket.remotePort) : undefined;
+            if (socket.remotePort !== undefined) this.pendingStreaming.delete(socket.remotePort);
+            for (const xml of queued || []) {
+                socket.write(xml);
+            }
+        });
+
+        this.streaming.on('connection', (raw) => {
+            if (raw.remotePort === undefined) return;
+            const port = raw.remotePort;
+            this.pendingStreaming.set(port, []);
+            raw.on('close', () => this.pendingStreaming.delete(port));
+        });
+
+        this.streaming.on('tlsClientError', (err, socket) => {
+            if (socket && socket.remotePort !== undefined) this.pendingStreaming.delete(socket.remotePort);
         });
 
         this.streaming.on('error', (e) => {
@@ -277,6 +311,36 @@ export default class MockTAKServer {
                 response.write(JSON.stringify({ uploadSizeLimit: 50 }));
                 response.end();
                 return true;
+            } else if (request.method === 'GET' && request.url === '/Marti/api/version') {
+                // Certificate.probe() - the X509 filter accepted the client certificate
+                response.setHeader('Content-Type', 'text/plain');
+                response.write('TAK Server 5.4-RELEASE-1');
+                response.end();
+                return true;
+            } else if (request.method === 'GET' && request.url.startsWith('/Marti/api/certadmin/cert/')) {
+                // Certificate.validate() via Admin cert - the certificate is known & not revoked
+                response.setHeader('Content-Type', 'application/json');
+                response.write(JSON.stringify({
+                    version: '3',
+                    type: 'TakCert',
+                    data: {
+                        id: 1,
+                        hash: decodeURIComponent(request.url.replace('/Marti/api/certadmin/cert/', '')),
+                        subjectDn: '',
+                        userDn: '',
+                        creatorDn: '',
+                        certificate: '',
+                        clientUid: '',
+                        issuanceDate: '2026-01-01T00:00:00.000Z',
+                        effectiveDate: '2026-01-01T00:00:00.000Z',
+                        expirationDate: '2027-01-01T00:00:00.000Z',
+                        token: '',
+                        serialNumber: '1',
+                    },
+                    nodeId: 'mock',
+                }));
+                response.end();
+                return true;
             } else if (request.method === 'GET' && request.url === '/Marti/api/contacts/all') {
                 response.setHeader('Content-Type', 'application/json');
                 response.write(JSON.stringify([]));
@@ -311,9 +375,11 @@ export default class MockTAKServer {
     }
 
     write(cot: CoT): void {
+        const xml = CoTParser.to_xml(cot);
         for (const socket of this.sockets) {
-            socket.write(CoTParser.to_xml(cot));
+            socket.write(xml);
         }
+        this.queuePending(xml);
     }
 
     /**
@@ -324,6 +390,14 @@ export default class MockTAKServer {
     streamingWrite(xml: string): void {
         for (const socket of this.streamingSockets) {
             socket.write(xml);
+        }
+        this.queuePending(xml);
+    }
+
+    /** Hold a write for streaming connections still completing their handshake */
+    queuePending(xml: string): void {
+        for (const queue of this.pendingStreaming.values()) {
+            queue.push(xml);
         }
     }
 
@@ -344,6 +418,7 @@ export default class MockTAKServer {
             socket.destroy();
         }
         this.sockets.clear();
+        this.pendingStreaming.clear();
 
         await Promise.all([
             new Promise<void>((resolve) => {

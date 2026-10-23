@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { sql, eq } from 'drizzle-orm';
 import { ConnectionFeature, VideoLease } from '../common/schema.js';
+import jwt from 'jsonwebtoken';
 import Flight from './flight.js';
 import Sinon from 'sinon';
 import {
@@ -26,10 +27,14 @@ flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 flight.user({ username: 'user', admin: false });
+flight.integration('etl-test');
 
 flight.connection();
 
 process.env.ECR_TASKS_REPOSITORY_NAME = 'example-ecr';
+process.env.ETLSecurityGroup = 'sg-etl';
+process.env.SubnetPrivateA = 'subnet-private-a';
+process.env.SubnetPrivateB = 'subnet-private-b';
 
 test('GET: api/connection/1/layer', async () => {
     try {
@@ -50,6 +55,27 @@ test('GET: api/connection/1/layer', async () => {
             total: 0,
             items: [],
         });
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('POST: api/connection/1/layer - unregistered integration', async () => {
+    try {
+        const res = await flight.fetch('/api/connection/1/layer', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'Unregistered Layer',
+                description: 'Layer for an Integration that is not registered',
+                task: 'etl-unregistered-v1.0.0',
+            },
+        }, false);
+
+        assert.equal(res.status, 400);
+        assert.equal(res.body.message, 'Integration etl-unregistered is not registered');
     } catch (err) {
         assert.ifError(err);
     }
@@ -82,10 +108,8 @@ test('POST: api/connection/1/layer', async () => {
 
         Sinon.stub(ECRClient.prototype, 'send').callsFake((command) => {
             if (command instanceof BatchGetImageCommand) {
-                assert.deepEqual(command.input, {
-                    repositoryName: process.env.ECR_TASKS_REPOSITORY_NAME,
-                    imageIds: [{ imageTag: 'etl-test-v1.0.0' }],
-                });
+                assert.equal(command.input.repositoryName, process.env.ECR_TASKS_REPOSITORY_NAME);
+                assert.deepEqual(command.input.imageIds, [{ imageTag: 'etl-test-v1.0.0' }]);
 
                 return Promise.resolve({
                     images: [{
@@ -127,7 +151,7 @@ test('POST: api/connection/1/layer', async () => {
             id: 1,
             uuid: '123',
             priority: 'off',
-            permissions: null,
+            permissions: [],
             template: false,
             created: '2025-06-26',
             updated: '2025-06-26',
@@ -138,9 +162,16 @@ test('POST: api/connection/1/layer', async () => {
             protected: false,
             logging: true,
             task: 'etl-test-v1.0.0',
+            version: '1.0.0',
+            schema: '1.0',
+            integration: {
+                name: 'etl-test',
+                icon: null,
+            },
             connection: 1,
             memory: 256,
             timeout: 120,
+            vpc: false,
             alarm_period: 30,
             alarm_evals: 5,
             alarm_points: 4,
@@ -180,7 +211,7 @@ test('GET: api/connection/1/layer/1', async () => {
             id: 1,
             uuid: '123',
             priority: 'off',
-            permissions: null,
+            permissions: [],
             template: false,
             created: '2025-06-26',
             updated: '2025-06-26',
@@ -191,9 +222,16 @@ test('GET: api/connection/1/layer/1', async () => {
             protected: false,
             logging: true,
             task: 'etl-test-v1.0.0',
+            version: '1.0.0',
+            schema: '1.0',
+            integration: {
+                name: 'etl-test',
+                icon: null,
+            },
             connection: 1,
             memory: 256,
             timeout: 120,
+            vpc: false,
             alarm_period: 30,
             alarm_evals: 5,
             alarm_points: 4,
@@ -236,7 +274,7 @@ test('PATCH: api/connection/1/layer/1 - set protected', async () => {
             id: 1,
             uuid: '123',
             priority: 'off',
-            permissions: null,
+            permissions: [],
             template: false,
             created: '2025-06-26',
             updated: '2025-06-26',
@@ -247,9 +285,16 @@ test('PATCH: api/connection/1/layer/1 - set protected', async () => {
             protected: true,
             logging: true,
             task: 'etl-test-v1.0.0',
+            version: '1.0.0',
+            schema: '1.0',
+            integration: {
+                name: 'etl-test',
+                icon: null,
+            },
             connection: 1,
             memory: 256,
             timeout: 120,
+            vpc: false,
             alarm_period: 30,
             alarm_evals: 5,
             alarm_points: 4,
@@ -306,7 +351,7 @@ test('PATCH: api/connection/1/layer/1 - unset protected', async () => {
             id: 1,
             uuid: '123',
             priority: 'off',
-            permissions: null,
+            permissions: [],
             template: false,
             created: '2025-06-26',
             updated: '2025-06-26',
@@ -317,9 +362,16 @@ test('PATCH: api/connection/1/layer/1 - unset protected', async () => {
             protected: false,
             logging: true,
             task: 'etl-test-v1.0.0',
+            version: '1.0.0',
+            schema: '1.0',
+            integration: {
+                name: 'etl-test',
+                icon: null,
+            },
             connection: 1,
             memory: 256,
             timeout: 120,
+            vpc: false,
             alarm_period: 30,
             alarm_evals: 5,
             alarm_points: 4,
@@ -354,11 +406,11 @@ test('PATCH: api/connection/1/layer/1 - set permissions', async () => {
                 bearer: flight.token.admin,
             },
             body: {
-                permissions: null,
+                permissions: [],
             },
         }, true);
 
-        assert.equal(unset.body.permissions, null);
+        assert.deepEqual(unset.body.permissions, []);
     } catch (err) {
         assert.ifError(err);
     }
@@ -377,7 +429,144 @@ test('PATCH: api/connection/1/layer/1 - invalid permissions', async () => {
         }, false);
 
         assert.equal(res.status, 400);
-        assert.ok(String(res.body.message).startsWith('Unknown Layer Permission: feature:read'));
+        assert.ok(String(res.body.message).startsWith('Unknown Permission: feature:read'));
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/connection/1/layer/1 - permissions validated against task manifest', async () => {
+    const manifest = (capabilities: object) => JSON.stringify({
+        schemaVersion: 2,
+        mediaType: 'application/vnd.oci.image.manifest.v1+json',
+        annotations: {
+            'com.cloudtak.capabilities': JSON.stringify(capabilities),
+        },
+    });
+
+    const base = {
+        version: '1.0',
+        name: 'Test Task',
+        description: 'A Task used in testing',
+        compute: { memory: 256, timeout: 30 },
+        invocations: {},
+    };
+
+    try {
+        Sinon.stub(ECRClient.prototype, 'send').callsFake((command) => {
+            if (!(command instanceof BatchGetImageCommand)) throw new Error('Unexpected command');
+
+            const tag = command.input.imageIds![0].imageTag;
+
+            if (tag === 'etl-test-v1.0.0') {
+                return Promise.resolve({
+                    images: [{
+                        imageManifest: manifest({
+                            ...base,
+                            permissions: [{
+                                resource: 'feature:submit',
+                                required: true,
+                                description: 'Post features',
+                            }],
+                        }),
+                    }],
+                });
+            } else if (tag === 'etl-test-v1.1.0') {
+                return Promise.resolve({
+                    images: [{
+                        imageManifest: manifest({
+                            ...base,
+                            permissions: [{
+                                resource: 'feature:submit',
+                                required: true,
+                                description: 'Post features',
+                            }, {
+                                resource: 'video:*',
+                                required: false,
+                                description: 'Manage video',
+                            }],
+                        }),
+                    }],
+                });
+            }
+
+            throw new Error(`Unexpected tag: ${tag}`);
+        });
+
+        // Current version (1.0.0) does not declare video:*
+        const undeclared = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { permissions: ['feature:submit', 'video:*'] },
+        }, false);
+
+        assert.equal(undeclared.status, 400);
+        assert.equal(undeclared.body.message, 'Permission video:* is not declared by etl-test-v1.0.0 - Declared permissions: feature:submit');
+
+        // Current version requires feature:submit
+        const missing = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { permissions: [] },
+        }, false);
+
+        assert.equal(missing.status, 400);
+        assert.equal(missing.body.message, 'Permission feature:submit is required by etl-test-v1.0.0');
+
+        const ok = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { permissions: ['feature:submit'] },
+        }, true);
+
+        assert.deepEqual(ok.body.permissions, ['feature:submit']);
+
+        // A task change in the body is validated against the new version's manifest
+        const newVersion = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { task: 'etl-test-v1.1.0', permissions: ['video:*'] },
+        }, false);
+
+        assert.equal(newVersion.status, 400);
+        assert.equal(newVersion.body.message, 'Permission feature:submit is required by etl-test-v1.1.0');
+    } catch (err) {
+        assert.ifError(err);
+    }
+
+    Sinon.restore();
+
+    // Without a manifest available the existing permissions are cleared unchecked
+    const cleared = await flight.fetch('/api/connection/1/layer/1', {
+        method: 'PATCH',
+        auth: { bearer: flight.token.admin },
+        body: { permissions: [] },
+    }, true);
+
+    assert.deepEqual(cleared.body.permissions, []);
+});
+
+test('PATCH: api/connection/1/layer/1 - layer token cannot modify permissions', async () => {
+    try {
+        const token = 'etl.' + jwt.sign({ access: 'layer', id: 1, internal: true }, 'coe-wildland-fire');
+
+        const res = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: token },
+            body: { permissions: ['video:*'] },
+        }, false);
+
+        assert.equal(res.status, 403);
+        assert.equal(res.body.message, 'Layer tokens cannot modify Layer permissions');
+
+        const allowed = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: token },
+            body: { description: 'Updated by Layer Token' },
+        }, true);
+
+        assert.equal(allowed.body.description, 'Updated by Layer Token');
+        assert.deepEqual(allowed.body.permissions, []);
     } catch (err) {
         assert.ifError(err);
     }
@@ -390,7 +579,8 @@ test('GET: api/layer/update-management', async () => {
         const stacklessLayer = await flight.config!.models.Layer.generate({
             name: 'Undeployed Layer',
             description: 'This layer has not been deployed',
-            task: 'etl-test-v1.1.0',
+            task: 1,
+            version: '1.1.0',
             connection: 1,
         });
 
@@ -555,7 +745,8 @@ test('DELETE: api/connection/1/layer/:id - layer with written COT features', asy
         const layer = await flight.config!.models.Layer.generate({
             name: 'Feature Layer',
             description: 'Layer that has written COT features to the map',
-            task: 'etl-test-v1.0.0',
+            task: 1,
+            version: '1.0.0',
             connection: 1,
         });
 
@@ -698,10 +889,8 @@ test('POST: api/connection/1/layer - with incoming & outgoing config', async () 
 
         Sinon.stub(ECRClient.prototype, 'send').callsFake((command) => {
             if (command instanceof BatchGetImageCommand) {
-                assert.deepEqual(command.input, {
-                    repositoryName: process.env.ECR_TASKS_REPOSITORY_NAME,
-                    imageIds: [{ imageTag: 'etl-test-v1.0.0' }],
-                });
+                assert.equal(command.input.repositoryName, process.env.ECR_TASKS_REPOSITORY_NAME);
+                assert.deepEqual(command.input.imageIds, [{ imageTag: 'etl-test-v1.0.0' }]);
 
                 return Promise.resolve({
                     images: [{
@@ -749,12 +938,269 @@ test('POST: api/connection/1/layer - with incoming & outgoing config', async () 
         assert.equal(res.body.incoming.webhooks, true);
 
         assert.ok(res.body.outgoing, 'has outgoing config');
+        assert.deepEqual(res.body.outgoing.subscriptions, []);
     } catch (err) {
         assert.ifError(err);
     } finally {
         if (layerId !== undefined) {
             await flight.config!.models.LayerIncoming.delete(layerId);
             await flight.config!.models.LayerOutgoing.delete(layerId);
+            await flight.config!.models.Layer.delete(layerId);
+        }
+
+        Sinon.restore();
+    }
+});
+
+test('Outgoing subscriptions follow the task manifest on create & version update', async () => {
+    const manifest = (capabilities: object) => JSON.stringify({
+        schemaVersion: 2,
+        mediaType: 'application/vnd.oci.image.manifest.v1+json',
+        annotations: {
+            'com.cloudtak.capabilities': JSON.stringify(capabilities),
+        },
+    });
+
+    const base = {
+        version: '1.0',
+        name: 'Test Task',
+        description: 'A Task used in testing',
+        compute: { memory: 256, timeout: 30 },
+        permissions: [],
+    };
+
+    const manifests: Record<string, string> = {
+        'etl-test-v1.0.0': manifest({
+            ...base,
+            invocations: {
+                outgoing: {
+                    types: [
+                        { resource: 'feature:*', description: 'Streaming CoT' },
+                        { resource: 'event:create', description: 'New Events' },
+                    ],
+                },
+            },
+        }),
+        'etl-test-v1.1.0': manifest({
+            ...base,
+            invocations: {
+                outgoing: {
+                    types: [
+                        { resource: 'event:*', description: 'All Events' },
+                    ],
+                },
+            },
+        }),
+        'etl-test-v1.2.0': manifest({
+            ...base,
+            invocations: {},
+        }),
+    };
+
+    let layerId: number | undefined;
+
+    try {
+        Sinon.stub(CloudFormationClient.prototype, 'send').callsFake((command) => {
+            if (command instanceof DescribeStacksCommand) {
+                return Promise.resolve({ Stacks: [{ StackStatus: 'CREATE_COMPLETE' }] });
+            } else if (command instanceof CreateStackCommand) {
+                return Promise.resolve({});
+            } else {
+                throw new Error('Unexpected command');
+            }
+        });
+
+        Sinon.stub(ECRClient.prototype, 'send').callsFake((command) => {
+            if (!(command instanceof BatchGetImageCommand)) throw new Error('Unexpected command');
+
+            const tag = command.input.imageIds![0].imageTag!;
+            if (!manifests[tag]) throw new Error(`Unexpected tag: ${tag}`);
+
+            return Promise.resolve({
+                images: [{
+                    imageId: { imageTag: tag, imageDigest: 'sha256:abcdef1234567890' },
+                    imageManifest: manifests[tag],
+                }],
+            });
+        });
+
+        const created = await flight.fetch('/api/connection/1/layer', {
+            method: 'POST',
+            auth: { bearer: flight.token.admin },
+            body: {
+                name: 'Subscriptions Layer',
+                description: 'Outgoing subscriptions are derived from the manifest',
+                task: 'etl-test-v1.0.0',
+                outgoing: {},
+            },
+        }, true);
+
+        layerId = created.body.id;
+
+        assert.deepEqual(created.body.outgoing.subscriptions, ['feature:*', 'event:create']);
+
+        // An update that leaves the task alone leaves subscriptions alone
+        const renamed = await flight.fetch(`/api/connection/1/layer/${layerId}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { name: 'Renamed Subscriptions Layer' },
+        }, true);
+
+        assert.deepEqual(renamed.body.outgoing.subscriptions, ['feature:*', 'event:create']);
+
+        // A version bump replaces subscriptions with the new manifest's types
+        const bumped = await flight.fetch(`/api/connection/1/layer/${layerId}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { task: 'etl-test-v1.1.0' },
+        }, true);
+
+        assert.equal(bumped.body.task, 'etl-test-v1.1.0');
+        assert.deepEqual(bumped.body.outgoing.subscriptions, ['event:*']);
+
+        // A version that no longer declares outgoing types clears subscriptions
+        const dropped = await flight.fetch(`/api/connection/1/layer/${layerId}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { task: 'etl-test-v1.2.0' },
+        }, true);
+
+        assert.deepEqual(dropped.body.outgoing.subscriptions, []);
+
+        // Re-creating the outgoing config on an existing layer derives them again
+        await flight.fetch(`/api/connection/1/layer/${layerId}/outgoing`, {
+            method: 'DELETE',
+            auth: { bearer: flight.token.admin },
+        }, true);
+
+        await flight.fetch(`/api/connection/1/layer/${layerId}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { task: 'etl-test-v1.0.0' },
+        }, true);
+
+        const recreated = await flight.fetch(`/api/connection/1/layer/${layerId}/outgoing`, {
+            method: 'POST',
+            auth: { bearer: flight.token.admin },
+            body: {},
+        }, true);
+
+        assert.deepEqual(recreated.body.subscriptions, ['feature:*', 'event:create']);
+    } catch (err) {
+        assert.ifError(err);
+    } finally {
+        if (layerId !== undefined) {
+            await flight.config!.models.LayerOutgoing.delete(layerId);
+            await flight.config!.models.Layer.delete(layerId);
+        }
+
+        Sinon.restore();
+    }
+});
+
+test('Layer schema follows the task manifest on create & version update', async () => {
+    const manifest = (capabilities: object) => JSON.stringify({
+        schemaVersion: 2,
+        mediaType: 'application/vnd.oci.image.manifest.v1+json',
+        annotations: {
+            'com.cloudtak.capabilities': JSON.stringify(capabilities),
+        },
+    });
+
+    const base = {
+        name: 'Test Task',
+        description: 'A Task used in testing',
+        compute: { memory: 256, timeout: 30 },
+        permissions: [],
+        invocations: {},
+    };
+
+    const manifests: Record<string, string> = {
+        'etl-test-v1.0.0': manifest({ ...base, version: '1.0' }),
+        'etl-test-v1.1.0': manifest({ ...base, version: '1.1' }),
+        'etl-test-v1.2.0': '{}',
+    };
+
+    let layerId: number | undefined;
+
+    try {
+        Sinon.stub(CloudFormationClient.prototype, 'send').callsFake((command) => {
+            if (command instanceof DescribeStacksCommand) {
+                return Promise.resolve({ Stacks: [{ StackStatus: 'CREATE_COMPLETE' }] });
+            } else if (command instanceof CreateStackCommand) {
+                return Promise.resolve({});
+            } else {
+                throw new Error('Unexpected command');
+            }
+        });
+
+        Sinon.stub(ECRClient.prototype, 'send').callsFake((command) => {
+            if (!(command instanceof BatchGetImageCommand)) throw new Error('Unexpected command');
+
+            const tag = command.input.imageIds![0].imageTag!;
+            if (!manifests[tag]) throw new Error(`Unexpected tag: ${tag}`);
+
+            return Promise.resolve({
+                images: [{
+                    imageId: { imageTag: tag, imageDigest: 'sha256:abcdef1234567890' },
+                    imageManifest: manifests[tag],
+                }],
+            });
+        });
+
+        const created = await flight.fetch('/api/connection/1/layer', {
+            method: 'POST',
+            auth: { bearer: flight.token.admin },
+            body: {
+                name: 'Schema Layer',
+                description: 'The schema version is derived from the manifest',
+                task: 'etl-test-v1.1.0',
+            },
+        }, true);
+
+        layerId = created.body.id;
+
+        assert.equal(created.body.schema, '1.1');
+
+        // An update that leaves the task alone leaves the schema alone
+        const renamed = await flight.fetch(`/api/connection/1/layer/${layerId}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { name: 'Renamed Schema Layer' },
+        }, true);
+
+        assert.equal(renamed.body.schema, '1.1');
+
+        // A version change re-reads the schema from the new manifest
+        const downgraded = await flight.fetch(`/api/connection/1/layer/${layerId}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { task: 'etl-test-v1.0.0' },
+        }, true);
+
+        assert.equal(downgraded.body.task, 'etl-test-v1.0.0');
+        assert.equal(downgraded.body.schema, '1.0');
+
+        const upgraded = await flight.fetch(`/api/connection/1/layer/${layerId}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { task: 'etl-test-v1.1.0' },
+        }, true);
+
+        assert.equal(upgraded.body.schema, '1.1');
+
+        // A version without a Capabilities document falls back to 1.0
+        const absent = await flight.fetch(`/api/connection/1/layer/${layerId}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { task: 'etl-test-v1.2.0' },
+        }, true);
+
+        assert.equal(absent.body.schema, '1.0');
+    } catch (err) {
+        assert.ifError(err);
+    } finally {
+        if (layerId !== undefined) {
             await flight.config!.models.Layer.delete(layerId);
         }
 
@@ -839,6 +1285,133 @@ test('POST: api/connection/0/layer - admin layer requires admin', async () => {
         assert.equal(res.status, 401);
     } catch (err) {
         assert.ifError(err);
+    }
+});
+
+test('POST: api/connection/1/layer - vpc requires system admin', async () => {
+    try {
+        const minted = await flight.fetch('/api/connection/1/token', {
+            method: 'POST',
+            auth: { bearer: flight.token.admin },
+            body: { name: 'VPC Token' },
+        }, true);
+
+        const res = await flight.fetch('/api/connection/1/layer', {
+            method: 'POST',
+            auth: { bearer: minted.body.token },
+            body: {
+                name: 'VPC Layer',
+                description: 'Should be rejected',
+                task: 'etl-test-v1.0.0',
+                vpc: true,
+            },
+        }, false);
+
+        assert.equal(res.status, 403);
+        assert.equal(res.body.message, 'Only a System Admin can enable VPC access');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/connection/1/layer/1 - vpc requires system admin', async () => {
+    try {
+        const token = 'etl.' + jwt.sign({ access: 'layer', id: 1, internal: true }, 'coe-wildland-fire');
+
+        const res = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: token },
+            body: { vpc: true },
+        }, false);
+
+        assert.equal(res.status, 403);
+        assert.equal(res.body.message, 'Only a System Admin can change VPC access');
+
+        const unchanged = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: token },
+            body: { vpc: false, description: 'Unchanged vpc is allowed' },
+        }, true);
+
+        assert.equal(unchanged.body.vpc, false);
+        assert.equal(unchanged.body.description, 'Unchanged vpc is allowed');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/connection/1/layer/1 - system admin toggles vpc', async () => {
+    let describeCount = 0;
+
+    try {
+        Sinon.stub(CloudFormationClient.prototype, 'send').callsFake((command) => {
+            if (command instanceof DescribeStacksCommand) {
+                if (command.input.StackName === 'test-layer-1') {
+                    describeCount++;
+
+                    if (describeCount % 2 === 1) {
+                        return Promise.resolve({
+                            Stacks: [{
+                                StackName: 'test-layer-1',
+                                StackStatus: 'UPDATE_COMPLETE',
+                                CreationTime: new Date(),
+                            }],
+                        });
+                    }
+
+                    throw new Error('Stack with id test-layer-1 does not exist');
+                } else if (command.input.StackName === 'test') {
+                    return Promise.resolve({
+                        Stacks: [{ Tags: [] }],
+                    });
+                }
+            } else if (command instanceof CreateStackCommand) {
+                const template = JSON.parse(String(command.input.TemplateBody));
+                const vpc = template.Resources.ETLFunction.Properties.VpcConfig;
+
+                if (describeCount <= 2) {
+                    assert.deepEqual(vpc, {
+                        SecurityGroupIds: ['sg-etl'],
+                        SubnetIds: ['subnet-private-a', 'subnet-private-b'],
+                    });
+                } else {
+                    assert.equal(vpc, undefined);
+                }
+
+                return Promise.resolve({});
+            }
+
+            throw new Error(`Unexpected CloudFormation command: ${command.constructor.name}`);
+        });
+
+        Sinon.stub(CloudWatchLogsClient.prototype, 'send').callsFake((command) => {
+            if (command instanceof DeleteLogGroupCommand) {
+                return Promise.resolve({});
+            }
+
+            throw new Error('Unexpected command');
+        });
+
+        const enabled = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { vpc: true },
+        }, true);
+
+        assert.equal(enabled.body.vpc, true);
+
+        const disabled = await flight.fetch('/api/connection/1/layer/1', {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { vpc: false },
+        }, true);
+
+        assert.equal(disabled.body.vpc, false);
+        assert.equal(describeCount, 4);
+    } catch (err) {
+        assert.ifError(err);
+    } finally {
+        Sinon.restore();
     }
 });
 

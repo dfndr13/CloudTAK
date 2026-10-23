@@ -2,7 +2,7 @@ import { Static, Type } from '@sinclair/typebox';
 import { setTimeout } from 'node:timers/promises';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
-import Auth, { AuthResourceAccess, AuthUser } from '../../common/auth.js';
+import Auth, { AuthResource, AuthResourceAccess, AuthUser, AuthUserAccess } from '../../common/auth.js';
 import Lambda from '../lib/aws/lambda.js';
 import CloudFormation from '../lib/aws/cloudformation.js';
 import LayerDeploy from '../lib/aws/layer-deploy.js';
@@ -30,6 +30,23 @@ import { Layer_Config } from '../../common/models/Layer.js';
 import { Layer_Priority } from '../../common/enums.js';
 import { Layer } from '../../common/schema.js';
 import * as Default from '../lib/limits.js';
+
+const EmailSenders = Type.Array(Type.String({
+    maxLength: 128,
+    pattern: '^[^\\s@<>]*@[^\\s@<>]+$',
+}), {
+    maxItems: 25,
+    description: 'Addresses or @domains allowed to email the Layer - empty allows any sender',
+});
+
+function normalizeSenders(senders?: Array<string>): Array<string> | undefined {
+    if (!senders) return undefined;
+    return Array.from(new Set(senders.map(sender => sender.trim().toLowerCase())));
+}
+
+function isSystemAdmin(auth: AuthResource | AuthUser): boolean {
+    return auth instanceof AuthUser && auth.access === AuthUserAccess.ADMIN;
+}
 
 export default async function router(schema: Schema, config: ConfigStateless) {
     const alarm = new Alarm(config.StackName);
@@ -221,12 +238,18 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             alarm_evals: Type.Optional(Type.Integer()),
             alarm_points: Type.Optional(Type.Integer()),
             protected: Type.Boolean({ default: false }),
-            permissions: Type.Optional(Type.Union([Type.Null(), Type.Array(Type.String())], {
+            vpc: Type.Boolean({
+                default: false,
+                description: 'Attach the Lambda to the private VPC subnets - System Admin only as it grants access to internal resources',
+            }),
+            permissions: Type.Optional(Type.Array(Type.String(), {
                 description: 'Permissions granted to the Layer as <permission>:<level> pairs - ie video:read or video:*',
             })),
             incoming: Type.Optional(Type.Object({
                 cron: Type.Optional(Type.Union([Type.Null(), Type.String()])),
                 webhooks: Type.Optional(Type.Boolean()),
+                email: Type.Optional(Type.Boolean()),
+                email_senders: Type.Optional(EmailSenders),
             }, {
                 description: 'Create an Incoming Config alongside the Layer',
             })),
@@ -249,6 +272,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
 
                 username = auth instanceof AuthUser ? auth.email : null;
+
+                if (req.body.vpc && !isSystemAdmin(auth)) {
+                    throw new Err(403, null, 'Only a System Admin can enable VPC access');
+                }
             }
 
             CommonLayerControl.validatePermissions(req.body.permissions);
@@ -258,6 +285,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             }
 
             const { incoming, outgoing, ...body } = req.body;
+
+            if (incoming) incoming.email_senders = normalizeSenders(incoming.email_senders);
 
             const layer = await layerControl.generate({
                 ...body,
@@ -271,6 +300,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             if (layer.incoming) {
                 await config.hub.eventSet(layer.id, layer.incoming.cron && !Schedule.is_aws(layer.incoming.cron) && layer.enabled ? layer.incoming.cron : null);
+            }
+
+            if (layer.outgoing && layer.connection !== null) {
+                await config.hub.featureRefresh(layer.connection);
             }
 
             res.json(layer);
@@ -289,6 +322,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
         body: Type.Object({
             webhooks: Type.Optional(Type.Boolean()),
+            email: Type.Optional(Type.Boolean()),
+            email_senders: Type.Optional(EmailSenders),
             cron: Type.Optional(Type.String()),
             stale: Type.Optional(Type.Integer()),
             data: Type.Optional(Type.Integer()),
@@ -342,6 +377,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const incoming = await config.models.LayerIncoming.generate({
                 layer: layer.id,
                 ...req.body,
+                email_senders: normalizeSenders(req.body.email_senders),
             });
 
             layer = await layerControl.from(connection, req.params.layerid);
@@ -382,6 +418,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
         body: Type.Object({
             webhooks: Type.Optional(Type.Boolean()),
+            email: Type.Optional(Type.Boolean()),
+            email_senders: Type.Optional(EmailSenders),
             cron: Type.Optional(Type.Union([Type.Null(), Type.String()])),
             enabled_styles: Type.Optional(Type.Boolean()),
             styles: Type.Optional(StyleContainer),
@@ -440,11 +478,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 Schedule.is_valid(req.body.cron);
             }
 
+            req.body.email_senders = normalizeSenders(req.body.email_senders);
+
             let changed = false;
             // Avoid Updating CF unless necessary as it blocks further updates until deployed
-            for (const prop of ['cron', 'webhooks']) {
-                // @ts-expect-error Doesn't like indexed values
-                if (req.body[prop] !== undefined && req.body[prop] !== layer[prop]) changed = true;
+            for (const prop of ['cron', 'webhooks', 'email', 'email_senders'] as const) {
+                if (req.body[prop] === undefined) continue;
+                if (JSON.stringify(req.body[prop]) !== JSON.stringify(layer.incoming[prop])) changed = true;
             }
 
             if (changed) {
@@ -467,7 +507,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             if (changed) {
                 try {
-                    await deployLayer(layer);
+                    await deployLayer({ ...layer, incoming });
                 } catch (err) {
                     console.error(err);
                 }
@@ -590,10 +630,17 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 await Filter.validate(req.body.filters);
             }
 
+            const capabilities = await layerControl.capabilities(layer.task);
+
             const incoming = await config.models.LayerOutgoing.generate({
                 layer: layer.id,
                 ...req.body,
+                ...(capabilities ? { subscriptions: CommonLayerControl.outgoingSubscriptions(capabilities) } : {}),
             });
+
+            if (layer.connection !== null) {
+                await config.hub.featureRefresh(layer.connection);
+            }
 
             layer = await layerControl.from(connection, req.params.layerid);
 
@@ -654,6 +701,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             const outgoing = await config.models.LayerOutgoing.commit(layer.id, updated);
 
+            if (layer.connection !== null) {
+                await config.hub.featureRefresh(layer.connection);
+            }
+
             if (req.body.environment) {
                 await Lambda.invoke(config, layer.id, 'environment:outgoing');
             }
@@ -703,6 +754,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             await config.models.LayerOutgoing.delete(layer.id);
 
+            if (layer.connection !== null) {
+                await config.hub.featureRefresh(layer.connection);
+            }
+
             layer = await layerControl.from(connection, req.params.layerid);
 
             try {
@@ -750,6 +805,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             })),
             enabled: Type.Optional(Type.Boolean()),
             protected: Type.Optional(Type.Boolean()),
+            vpc: Type.Optional(Type.Boolean({
+                description: 'Attach the Lambda to the private VPC subnets - System Admin only as it grants access to internal resources',
+            })),
             task: Type.Optional(Type.String()),
             logging: Type.Optional(Type.Boolean()),
 
@@ -757,7 +815,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             alarm_evals: Type.Optional(Type.Integer()),
             alarm_points: Type.Optional(Type.Integer()),
 
-            permissions: Type.Optional(Type.Union([Type.Null(), Type.Array(Type.String())], {
+            permissions: Type.Optional(Type.Array(Type.String(), {
                 description: 'Permissions granted to the Layer as <permission>:<level> pairs - ie video:read or video:*',
             })),
         }),
@@ -781,13 +839,45 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 }
             } else {
                 const auth = await Auth.is_connection(config, req, { resources }, req.params.connectionid);
+
+                if (req.body.permissions !== undefined && auth.layer) {
+                    throw new Err(403, null, 'Layer tokens cannot modify Layer permissions');
+                }
+
                 connection = auth.connection;
                 layer = await layerControl.from(connection, req.params.layerid);
+
+                if (req.body.vpc !== undefined && req.body.vpc !== layer.vpc && !isSystemAdmin(auth.auth)) {
+                    throw new Err(403, null, 'Only a System Admin can change VPC access');
+                }
+            }
+
+            const task = req.body.task || layer.task;
+            const taskChanged = req.body.task !== undefined && req.body.task !== layer.task;
+
+            const patch: Partial<InferInsertModel<typeof Layer>> = { ...req.body, task: undefined, version: undefined };
+            if (taskChanged) {
+                const resolved = await layerControl.resolve(task);
+                patch.task = resolved.integration.id;
+                patch.version = resolved.version;
+            }
+
+            let capabilities = null;
+            if (req.body.permissions !== undefined || taskChanged) {
+                capabilities = await layerControl.capabilities(task);
+            }
+
+            if (taskChanged) {
+                patch.schema = CommonLayerControl.schemaVersion(capabilities);
+            }
+
+            if (req.body.permissions !== undefined && capabilities) {
+                CommonLayerControl.validateManifestPermissions(req.body.permissions, capabilities, task);
             }
 
             let changed = false;
             // Avoid Updating CF unless necessary as it blocks further updates until deployed
-            for (const prop of ['task', 'memory', 'timeout', 'enabled', 'priority', 'alarm_period', 'alarm_evals', 'alarm_points']) {
+            for (const prop of ['task', 'memory', 'timeout', 'vpc', 'enabled', 'priority', 'alarm_period', 'alarm_evals', 'alarm_points']) {
                 // @ts-expect-error Doesn't like indexed values
                 if (req.body[prop] !== undefined && req.body[prop] !== layer[prop]) changed = true;
             }
@@ -801,8 +891,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             await config.models.Layer.commit(layer.id, {
                 updated: sql`Now()`,
-                ...req.body,
+                ...patch,
             });
+
+            if (taskChanged && layer.outgoing && capabilities) {
+                await config.models.LayerOutgoing.commit(layer.id, {
+                    updated: sql`Now()`,
+                    subscriptions: CommonLayerControl.outgoingSubscriptions(capabilities),
+                });
+            }
 
             layer = await layerControl.from(connection, req.params.layerid);
 
@@ -818,6 +915,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             if (layer.incoming) {
                 await config.hub.eventSet(layer.id, layer.incoming.cron && !Schedule.is_aws(layer.incoming.cron) && layer.enabled ? layer.incoming.cron : null);
+            }
+
+            if (layer.outgoing && layer.connection !== null) {
+                await config.hub.featureRefresh(layer.connection);
             }
 
             let status = 'unknown';
@@ -988,6 +1089,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             if (layer.outgoing) {
                 await config.models.LayerOutgoing.delete(req.params.layerid);
+
+                if (layer.connection !== null) {
+                    await config.hub.featureRefresh(layer.connection);
+                }
             }
 
             await config.hub.eventSet(layer.id, null);

@@ -5,26 +5,26 @@ import { Busboy } from '@fastify/busboy';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { Type, Static } from '@sinclair/typebox';
-import { sql } from 'drizzle-orm';
 import S3 from '../../common/aws/s3.js';
-import { CoTParser, FileShare, DataPackage } from '@tak-ps/node-cot';
+import { FileShare, DataPackage } from '@tak-ps/node-cot';
 import { fromProtocol } from '../lib/factory-basemap.js';
 import { StandardResponse } from '../../common/types.js';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth, { AuthUserAccess } from '../../common/auth.js';
 import type ConfigStateless from '../config.js';
-import ProfileControl from '../lib/control/profile.js';
-import activeChannels from '../lib/tak-channels.js';
+import ProfileOverlayControl from '../../common/control/profile-overlay.js';
+import MissionPackage, { resolveFeatures } from '../lib/mission-package.js';
+import activeChannels from '../../common/control/tak-channels.js';
 import { Basemap as BasemapParser } from '@tak-ps/node-cot';
 import { Content } from '@tak-ps/node-tak/lib/api/files';
 import { Package } from '@tak-ps/node-tak/lib/api/package';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
-import {
-    MissionOptions,
-} from '@tak-ps/node-tak/lib/api/mission';
+import { TAKAPI } from '@tak-ps/node-tak';
 import stream2buffer from '../lib/stream.js';
 import { PackageResponse } from './types.js';
+import { authenticatedProfile } from '../../common/control/profile.js';
+import TAKServerControl, { profileUid } from '../../common/control/takserver.js';
+import MissionControl from '../lib/control/mission.js';
 
 async function activeChannelNames(api: TAKAPI): Promise<Set<string>> {
     const groups = await api.Group.list({ useCache: true });
@@ -123,7 +123,9 @@ function packageExpirationForUpdate(value: string | number | null | undefined): 
 }
 
 export default async function router(schema: Schema, config: ConfigStateless) {
-    const profileControl = new ProfileControl(config);
+    const takserver = new TAKServerControl(config);
+    const missionControl = new MissionControl(config);
+    const overlayControl = new ProfileOverlayControl(config);
 
     await schema.post('/marti/package', {
         name: 'Create File Package',
@@ -147,10 +149,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
-            const profile = await config.models.Profile.from(user.email);
+            const profile = await authenticatedProfile(config, user.email);
             const auth = profile.auth;
             const creatorUid = profile.username;
-            const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
+            const api = await takserver.withAuth(auth);
             const id = crypto.randomUUID();
 
             let keywords: string[] | undefined = undefined;
@@ -319,10 +321,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
         res: Content,
     }, async (req, res) => {
+        let pkg: DataPackage | undefined;
+        let missionPkg: MissionPackage | undefined;
+
         try {
             const user = await Auth.as_user(config, req);
 
-            const profile = await config.models.Profile.from(user.email);
+            const profile = await authenticatedProfile(config, user.email);
             const auth = profile.auth;
             const creatorUid = profile.username;
             const id = crypto.randomUUID();
@@ -331,22 +336,36 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 throw new Err(400, null, 'Cannot share an empty package');
             }
 
-            const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
+            const api = await takserver.withAuth(auth);
 
-            const pkg = new DataPackage(id, req.body.name || id);
+            pkg = new DataPackage(id, req.body.name || id);
 
             pkg.setEphemeral();
 
-            // Hash => CoT UID
-            const attachmentMap: Map<string, string> = new Map();
-            for (const feat of req.body.features) {
-                if (feat.properties.attachments && feat.properties.attachments.length) {
-                    for (const hash of feat.properties.attachments) {
-                        attachmentMap.set(hash, feat.id);
-                    }
-                }
+            const missionGuids = req.body.destinations
+                .filter(d => d.mission)
+                .map(d => d.mission) as string[];
 
-                await pkg.addCoT(await CoTParser.from_geojson(feat));
+            const resolved = await resolveFeatures(req.body.features);
+
+            if (missionGuids.length) {
+                missionPkg = await MissionPackage.from(resolved, {
+                    username: user.email,
+                    name: req.body.name || id,
+                });
+            }
+
+            const pkgs = missionPkg ? [pkg, missionPkg.pkg] : [pkg];
+
+            for (const cot of resolved.cots) {
+                await pkg.addCoT(cot);
+            }
+
+            for (const attachment of resolved.attachments) {
+                await pkg.addFile(attachment.body, {
+                    name: attachment.name,
+                    attachment: attachment.uid,
+                });
             }
 
             for (const basemapid of req.body.basemaps) {
@@ -368,22 +387,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     },
                 })).to_xml();
 
-                await pkg.addFile(xml, {
-                    name: `basemap-${basemap.id}.xml`,
-                });
-            }
-
-            for (const hash of attachmentMap.keys()) {
-                const uid = attachmentMap.get(hash);
-                if (!uid) continue;
-
-                const attachment = await S3.list(`attachment/${hash}/`);
-
-                if (attachment.length < 1 || !attachment[0].Key) continue;
-                await pkg.addFile(await S3.get(attachment[0].Key), {
-                    name: path.parse(attachment[0].Key).base,
-                    attachment: uid,
-                });
+                for (const p of pkgs) {
+                    await p.addFile(xml, {
+                        name: `basemap-${basemap.id}.xml`,
+                    });
+                }
             }
 
             for (const asset of req.body.assets) {
@@ -393,9 +401,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     throw new Err(400, null, 'You can only attach your own files');
                 }
 
-                await pkg.addFile(await S3.get(`profile/${user.email}/${file.id}${path.parse(file.name).ext}`), {
-                    name: file.name,
-                });
+                const body = await stream2buffer(await S3.get(`profile/${user.email}/${file.id}${path.parse(file.name).ext}`));
+
+                for (const p of pkgs) {
+                    await p.addFile(body, {
+                        name: file.name,
+                    });
+                }
             }
 
             const out = await pkg.finalize();
@@ -451,7 +463,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     filename: id,
                     name: id,
                     senderCallsign: configs['tak::callsign'] as string || 'CloudTAK User',
-                    senderUid: `ANDROID-CloudTAK-${profile.username}`,
+                    senderUid: profileUid(profile.username),
                     // iTAK currently doesn't support DNS - Ref: https://issues.tak.gov/projects/ITAK/issues/ITAK-57
                     senderUrl: `https://${(await dns.lookup(url.hostname)).address}:${url.port}/Marti/sync/content?hash=${content.Hash}`,
                     sha256: content.Hash,
@@ -474,42 +486,28 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 });
             }
 
-            if (req.body.destinations.length && req.body.destinations.filter(d => d.mission).length) {
-                const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
+            if (missionPkg) {
+                const subscribed = new Set((await overlayControl.missions(user.email)).map(o => o.mode_id));
 
-                const guids = req.body.destinations.filter(d => d.mission).map(d => d.mission) as string[];
-
-                const ovs = new Map();
-                (await config.models.ProfileOverlay.list({
-                    where: sql`
-                        username = ${user.email}
-                        AND mode = 'mission'
-                    `,
-                })).items.map(o => ovs.set(o.mode_id, o));
-
-                for (const guid of guids) {
-                    if (!ovs.get(guid)) {
+                for (const guid of missionGuids) {
+                    if (!subscribed.has(guid)) {
                         throw new Err(400, null, `You are not subscribed to mission ${guid}`);
                     }
+                }
 
-                    const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
-                        ? { token: String(req.headers['missionauthorization']) }
-                        : await profileControl.subscription(user.email, guid);
+                for (const guid of missionGuids) {
+                    const opts = await missionControl.options(req, user.email, guid);
 
-                    await api.Mission.upload(
-                        guid,
-                        user.email,
-                        fs.createReadStream(out),
-                        opts,
-                    );
+                    await missionPkg.upload(api, guid, opts);
                 }
             }
 
             res.json(content);
-
-            await pkg.destroy();
         } catch (err) {
             Err.respond(err, res);
+        } finally {
+            if (missionPkg) await missionPkg.destroy();
+            if (pkg) await pkg.destroy();
         }
     });
 
@@ -540,17 +538,17 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 auth = config.serverCert();
 
                 if (typeof req.query.impersonate === 'string' && req.query.impersonate !== 'true') {
-                    const profile = await config.models.Profile.from(req.query.impersonate);
+                    const profile = await authenticatedProfile(config, req.query.impersonate);
                     auth = profile.auth;
                 } else {
                     auth = config.serverCert();
                 }
             } else {
                 const user = await Auth.as_user(config, req);
-                auth = (await config.models.Profile.from(user.email)).auth;
+                auth = (await authenticatedProfile(config, user.email)).auth;
             }
 
-            const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
+            const api = await takserver.withAuth(auth);
 
             const pkg = await api.Package.list({
                 tool: 'public',
@@ -597,8 +595,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
-            const auth = (await config.models.Profile.from(user.email)).auth;
-            const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
+            const auth = (await authenticatedProfile(config, user.email)).auth;
+            const api = await takserver.withAuth(auth);
 
             const pkg = await api.Package.list({
                 uid: req.params.uid,
@@ -640,10 +638,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             }
 
             const auth = config.serverCert();
-            const api = await TAKAPI.init(
-                new URL(String(config.server.api)),
-                new APIAuthCertificate(auth.cert, auth.key),
-            );
+            const api = await takserver.withAuth(auth);
 
             const pkgs = await api.Package.list({
                 uid: req.params.uid,
@@ -657,11 +652,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const latest = current.items[current.items.length - 1];
 
             if (user.access !== AuthUserAccess.ADMIN) {
-                const profile = await config.models.Profile.from(user.email);
-                const userApi = await TAKAPI.init(
-                    new URL(String(config.server.api)),
-                    new APIAuthCertificate(profile.auth.cert, profile.auth.key),
-                );
+                const profile = await authenticatedProfile(config, user.email);
+                const userApi = await takserver.withAuth(profile.auth);
 
                 const [userChannels, packageChannels] = await Promise.all([
                     activeChannelNames(userApi),
@@ -749,10 +741,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             const auth = config.serverCert();
 
-            const api = await TAKAPI.init(
-                new URL(String(config.server.api)),
-                new APIAuthCertificate(auth.cert, auth.key),
-            );
+            const api = await takserver.withAuth(auth);
 
             const pkgs = await api.Package.list({
                 uid: req.params.uid,

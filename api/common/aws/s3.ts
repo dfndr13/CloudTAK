@@ -19,6 +19,8 @@ export default class S3 {
         if (process.env.AWS_S3_Endpoint) {
             config.endpoint = process.env.AWS_S3_Endpoint;
             config.forcePathStyle = true;
+            config.requestChecksumCalculation = 'WHEN_REQUIRED';
+            config.responseChecksumValidation = 'WHEN_REQUIRED';
 
             if (!process.env.AWS_S3_AccessKeyId || !process.env.AWS_S3_SecretAccessKey) {
                 throw new Error('Cannot use custom S3 Endpoint without providing AWS_S3_AccessKeyId & AWS_S3_SecretAccessKey');
@@ -79,6 +81,29 @@ export default class S3 {
 
             const read = res.Body as Readable;
             return read;
+        } catch (err) {
+            throw new Err(500, new Error(err instanceof Error ? err.message : String(err)), 'Failed to get file');
+        }
+    }
+
+    static async getObject(key: string): Promise<{
+        body: Readable;
+        contentLength?: number;
+        contentType?: string;
+    }> {
+        try {
+            const s3 = this.#client();
+
+            const res = await s3.send(new S3AWS.GetObjectCommand({
+                Bucket: process.env.ASSET_BUCKET,
+                Key: key,
+            }));
+
+            return {
+                body: res.Body as Readable,
+                contentLength: res.ContentLength,
+                contentType: res.ContentType,
+            };
         } catch (err) {
             throw new Err(500, new Error(err instanceof Error ? err.message : String(err)), 'Failed to get file');
         }

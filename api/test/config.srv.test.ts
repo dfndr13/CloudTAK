@@ -135,7 +135,7 @@ test('GET api/config/login', async () => {
 
 test('GET api/config (user - restricted)', async () => {
     try {
-        const res = await flight.fetch('/api/config?keys=agol::token', {
+        const res = await flight.fetch('/api/config?keys=search::agol::token', {
             method: 'GET',
             auth: {
                 bearer: flight.token.user,
@@ -251,6 +251,25 @@ test('GET api/config (user - push firebase service-account identifiers restricte
         }, false);
 
         assert.equal(res.status, 401);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET api/config/layer', async () => {
+    try {
+        const res = await flight.fetch('/api/config/layer', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.deepEqual(res.body, {
+            webhooks: { url: 'http://localhost:5001' },
+            email: { domain: 'mail.localhost' },
+            vpc: { enabled: false, addresses: [] },
+        });
     } catch (err) {
         assert.ifError(err);
     }

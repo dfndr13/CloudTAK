@@ -12,9 +12,10 @@ import DataMission from '../lib/data-mission.js';
 import { InferSelectModel } from 'drizzle-orm';
 import type { Data } from '../../common/schema.js';
 import { StandardResponse, AssetResponse } from '../../common/types.js';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+import TAKServerControl from '../../common/control/takserver.js';
 
 export default async function router(schema: Schema, config: ConfigStateless) {
+    const takserver = new TAKServerControl(config);
     await schema.get('/connection/:connectionid/data/:dataid/asset', {
         name: 'List Assets',
         group: 'DataAssets',
@@ -116,7 +117,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
                     await assets[0];
 
-                    const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
+                    const api = await takserver.asConnection(connection);
 
                     const data = await config.models.Data.from(req.params.dataid);
                     if (data.connection !== connection.id) throw new Err(400, null, 'Data Sync does not belong to given Connection');
@@ -140,7 +141,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                         console.error(err);
                     }
 
-                    await api.Mission.attachContents(data.name, {
+                    await api.Mission.attachContents(data.mission_guid || data.name, {
                         hashes: [content.Hash],
                     }, {
                         token: data.mission_token || undefined,
@@ -183,20 +184,20 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
 
-            const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
+            const api = await takserver.asConnection(connection);
             const data = await config.models.Data.from(req.params.dataid);
             if (data.connection !== connection.id) throw new Err(400, null, 'Data Sync does not belong to given Connection');
 
             const file = `${req.params.asset}.${req.params.ext}`;
             try {
                 if (data.mission_sync) {
-                    const mission = await api.Mission.get(data.name, {}, {
+                    const mission = await api.Mission.get(data.mission_guid || data.name, {}, {
                         token: data.mission_token || undefined,
                     });
 
                     for (const content of mission.contents) {
                         if (content.data.name === file) {
-                            await api.Mission.detachContents(data.name, {
+                            await api.Mission.detachContents(data.mission_guid || data.name, {
                                 hash: content.data.hash,
                             }, {
                                 token: data.mission_token || undefined,

@@ -7,6 +7,8 @@ import Auth from '../../common/auth.js';
 import type ConfigStateless from '../config.js';
 import { FullConfig } from '../../common/types.js';
 import { FullConfigDefaults } from '../../common/defaults.js';
+import { vpcAddresses } from '../lib/aws/lambda.js';
+import process from 'node:process';
 
 export { FullConfigDefaults };
 
@@ -68,6 +70,7 @@ export const UserConfigKeys: (keyof Static<typeof FullConfig>)[] = [
     'map::bearing',
     'map::zoom',
     'map::basemap',
+    'map::basemap::favs',
     'map::terrain',
     'group::Yellow',
     'group::Cyan',
@@ -150,6 +153,20 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const updatedKeys = Object.keys(req.body) as (keyof Static<typeof FullConfig>)[];
             const refreshGeofence = updatedKeys.some(key => GeofenceConfigKeys.has(key));
 
+            if (req.body['login::token::expiry'] !== undefined || req.body['login::refresh::expiry'] !== undefined) {
+                const expiry = await config.models.Setting.typedMany({
+                    'login::token::expiry': 192,
+                    'login::refresh::expiry': 720,
+                });
+
+                const token = req.body['login::token::expiry'] ?? expiry['login::token::expiry'];
+                const refresh = req.body['login::refresh::expiry'] ?? expiry['login::refresh::expiry'];
+
+                if (token > refresh) {
+                    throw new Err(400, null, 'Login token lifetime cannot exceed the refresh token lifetime');
+                }
+            }
+
             if (req.body['map::basemap'] !== undefined && req.body['map::basemap'] !== null) {
                 let basemap;
                 try {
@@ -160,6 +177,21 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
                 if (basemap.username || basemap.overlay || basemap.hidden) {
                     throw new Err(400, null, 'Default Basemap must be a visible, non-overlay Server Basemap');
+                }
+            }
+
+            if (req.body['map::basemap::favs'] !== undefined && req.body['map::basemap::favs'] !== null) {
+                for (const fav of req.body['map::basemap::favs']) {
+                    let basemap;
+                    try {
+                        basemap = await config.models.Basemap.from(fav.id);
+                    } catch (err) {
+                        throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Favourite Basemap (${fav.id}) does not exist`);
+                    }
+
+                    if (basemap.username || basemap.overlay || basemap.hidden) {
+                        throw new Err(400, null, 'Favourite Basemaps must be visible, non-overlay Server Basemaps');
+                    }
                 }
             }
 
@@ -298,19 +330,33 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }
     });
 
-    await schema.get('/config/webhooks', {
-        name: 'Webhook Config',
+    await schema.get('/config/layer', {
+        name: 'Layer Config',
         group: 'Config',
-        description: 'Return the base URL that incoming Layer Webhooks are served from',
+        description: 'Deployment settings that apply to every Layer - webhook base URL, incoming email domain and VPC egress',
         res: Type.Object({
-            url: Type.String(),
+            webhooks: Type.Object({
+                url: Type.String({ description: 'Base URL that incoming Layer Webhooks are served from' }),
+            }),
+            email: Type.Object({
+                domain: Type.String({ description: 'Domain that incoming Layer Email is addressed to' }),
+            }),
+            vpc: Type.Object({
+                enabled: Type.Boolean({ description: 'Layers can be attached to the private VPC subnets' }),
+                addresses: Type.Array(Type.String(), { description: 'Static egress addresses used by VPC attached Layers' }),
+            }),
         }),
     }, async (req, res) => {
         try {
             await Auth.as_user(config, req);
 
             res.json({
-                url: config.WEBHOOKS_URL,
+                webhooks: { url: config.WEBHOOKS_URL },
+                email: { domain: config.MAIL_DOMAIN },
+                vpc: {
+                    enabled: !!(process.env.ETLSecurityGroup && process.env.SubnetPrivateA && process.env.SubnetPrivateB),
+                    addresses: vpcAddresses(),
+                },
             });
         } catch (err) {
             Err.respond(err, res);

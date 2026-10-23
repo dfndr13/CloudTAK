@@ -4,9 +4,11 @@ import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../../common/auth.js';
 import type ConfigStateless from '../config.js';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+import { authenticatedProfile } from '../../common/control/profile.js';
+import TAKServerControl from '../../common/control/takserver.js';
 
 export default async function router(schema: Schema, config: ConfigStateless) {
+    const takserver = new TAKServerControl(config);
     await schema.delete('/marti/api/files/:hash', {
         name: 'Delete File',
         group: 'MartiFiles',
@@ -21,8 +23,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req, { token: true });
-            const profile = await config.models.Profile.from(user.email);
-            const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(profile.auth.cert, profile.auth.key));
+            const profile = await authenticatedProfile(config, user.email);
+            const api = await takserver.withAuth(profile.auth);
             await api.Files.delete(req.params.hash);
 
             res.json({
@@ -48,8 +50,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req, { token: true });
-            const profile = await config.models.Profile.from(user.email);
-            const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(profile.auth.cert, profile.auth.key));
+            const profile = await authenticatedProfile(config, user.email);
+            const api = await takserver.withAuth(profile.auth);
 
             res.setHeader('Content-Disposition', `attachment; filename="${req.query.name || req.params.hash}"`);
 

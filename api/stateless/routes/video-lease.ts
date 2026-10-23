@@ -14,9 +14,11 @@ import { VideoLease } from '../../common/schema.js';
 import { eq } from 'drizzle-orm';
 import ECSVideoControl, { Action, Protocols, PathListItem, ProtocolPopulation } from '../lib/control/video-service.js';
 import * as Default from '../lib/limits.js';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+import { authenticatedProfile } from '../../common/control/profile.js';
+import TAKServerControl from '../../common/control/takserver.js';
 
 export default async function router(schema: Schema, config: ConfigStateless) {
+    const takserver = new TAKServerControl(config);
     const videoControl = new ECSVideoControl(config);
 
     await schema.post('/video/auth', {
@@ -116,6 +118,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 source_id: Type.Optional(Type.Union([Type.Null(), Type.String()])),
                 source_type: Type.Enum(VideoLease_SourceType),
                 source_model: Type.String(),
+                proxy: Type.Optional(Type.Union([Type.Null(), Type.String()])),
                 protocols: Protocols,
             })),
         }),
@@ -126,7 +129,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const requested = new URL(req.query.url);
 
             const url = await videoControl.url();
-            const uuid = requested.pathname.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+            // The lease path lives in the URL path for HLS/WebRTC/RTSP and in the streamid query for SRT
+            const uuid = req.query.url.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
 
             if (!url) {
                 res.json({
@@ -193,6 +197,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     source_id: lease.source_id,
                     source_type: lease.source_type,
                     source_model: lease.source_model || '',
+                    proxy: lease.proxy,
                 };
 
                 const protocols = await videoControl.protocols(lease, ProtocolPopulation.READ);
@@ -259,7 +264,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
         res: Type.Object({
             total: Type.Integer(),
-            items: Type.Array(VideoLeaseResponse),
+            items: Type.Array(Type.Composite([VideoLeaseResponse, Type.Object({
+                active: Type.Boolean({ description: 'True if the Media Server currently reports the lease path as ready' }),
+            })])),
         }),
     }, async (req, res) => {
         try {
@@ -273,7 +280,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             if (req.query.impersonate && (auth instanceof AuthResource || (auth instanceof AuthUser && (auth as AuthUser).is_admin()))) {
                 const impersonate: string | null = req.query.impersonate === true ? null : req.query.impersonate;
 
-                res.json(await config.models.VideoLease.list({
+                res.json(await withActive(await config.models.VideoLease.list({
                     limit: req.query.limit,
                     page: req.query.page,
                     order: req.query.order,
@@ -288,17 +295,17 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                         )
                         AND (${impersonate}::TEXT IS NULL OR username = ${impersonate}::TEXT)
                     `,
-                }));
+                })));
             } else {
                 const user = await Auth.as_user(config, req);
 
-                const profile = await config.models.Profile.from(user.email);
-                const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(profile.auth.cert, profile.auth.key));
+                const profile = await authenticatedProfile(config, user.email);
+                const api = await takserver.withAuth(profile.auth);
 
                 const groups = (await api.Group.list({ useCache: true }))
                     .data.map(group => group.name);
 
-                res.json(await config.models.VideoLease.list({
+                res.json(await withActive(await config.models.VideoLease.list({
                     limit: req.query.limit,
                     page: req.query.page,
                     order: req.query.order,
@@ -313,12 +320,40 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                             OR (${expired}::BOOLEAN IS False AND expiration > Now())
                         )
                     `,
-                }));
+                })));
             }
         } catch (err) {
             Err.respond(err, res);
         }
     });
+
+    /**
+     * Annotate a page of leases with whether the Media Server currently reports the path as ready
+     */
+    async function withActive(list: {
+        total: number;
+        items: Static<typeof VideoLeaseResponse>[];
+    }): Promise<{
+        total: number;
+        items: (Static<typeof VideoLeaseResponse> & { active: boolean })[];
+    }> {
+        const ready = new Set<string>();
+
+        if (list.items.length) {
+            try {
+                for (const path of await videoControl.paths()) {
+                    if (path.ready) ready.add(path.name);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        return {
+            total: list.total,
+            items: list.items.map(lease => ({ ...lease, active: ready.has(lease.path) })),
+        };
+    }
 
     await schema.get('/video/lease/:lease', {
         name: 'Get Lease',

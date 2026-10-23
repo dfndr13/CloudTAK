@@ -1,6 +1,9 @@
 import Modeler, { Pool } from '@openaddresses/batch-generic';
 import CoreDevice from './models/CoreDevice.js';
-import CoreEvent from './models/CoreEvent.js';
+import CoreEntity from './models/CoreEntity.js';
+import CoreEventBoardEvent from './models/CoreEventBoardEvent.js';
+import CoreForm from './models/CoreForm.js';
+import CoreFormResponse from './models/CoreFormResponse.js';
 import Data from './models/Data.js';
 import Import from './models/Import.js';
 import Layer from './models/Layer.js';
@@ -25,11 +28,17 @@ export default class Models {
     Channel: Modeler<typeof pgtypes.Channel>;
 
     CoreDevice: CoreDevice;
-    CoreDeviceChannel: Modeler<typeof pgtypes.CoreDeviceChannel>;
-    CoreEvent: CoreEvent;
+    CoreEntity: CoreEntity;
     CoreEventBoard: Modeler<typeof pgtypes.CoreEventBoard>;
     CoreEventBoardColumn: Modeler<typeof pgtypes.CoreEventBoardColumn>;
-    CoreEventBoardEvent: Modeler<typeof pgtypes.CoreEventBoardEvent>;
+    CoreEventBoardEvent: CoreEventBoardEvent;
+    CoreEventAssignment: Modeler<typeof pgtypes.CoreEventAssignment>;
+    CoreEventEffect: Modeler<typeof pgtypes.CoreEventEffect>;
+    CoreForm: CoreForm;
+    CoreFormChannel: Modeler<typeof pgtypes.CoreFormChannel>;
+    CoreFormColumn: Modeler<typeof pgtypes.CoreFormColumn>;
+    CoreFormResponse: CoreFormResponse;
+    CoreEventResponse: Modeler<typeof pgtypes.CoreEventResponse>;
 
     Connection: Modeler<typeof pgtypes.Connection>;
     ConnectionToken: Modeler<typeof pgtypes.ConnectionToken>;
@@ -57,7 +66,7 @@ export default class Models {
 
     VideoLease: Modeler<typeof pgtypes.VideoLease>;
 
-    Task: Modeler<typeof pgtypes.Task>;
+    Integration: Modeler<typeof pgtypes.Integration>;
 
     Iconset: Modeler<typeof pgtypes.Iconset>;
     Icon: Icon;
@@ -66,16 +75,23 @@ export default class Models {
 
     Layer: Layer;
     LayerIncoming: Modeler<typeof pgtypes.LayerIncoming>;
+    LayerMapping: Modeler<typeof pgtypes.LayerMapping>;
     LayerOutgoing: Modeler<typeof pgtypes.LayerOutgoing>;
 
     constructor(pg: Pool<typeof pgtypes>) {
         this.Channel = new Modeler(pg, pgtypes.Channel);
         this.CoreDevice = new CoreDevice(pg);
-        this.CoreDeviceChannel = new Modeler(pg, pgtypes.CoreDeviceChannel);
-        this.CoreEvent = new CoreEvent(pg);
+        this.CoreEntity = new CoreEntity(pg);
         this.CoreEventBoard = new Modeler(pg, pgtypes.CoreEventBoard);
         this.CoreEventBoardColumn = new Modeler(pg, pgtypes.CoreEventBoardColumn);
-        this.CoreEventBoardEvent = new Modeler(pg, pgtypes.CoreEventBoardEvent);
+        this.CoreEventBoardEvent = new CoreEventBoardEvent(pg);
+        this.CoreEventAssignment = new Modeler(pg, pgtypes.CoreEventAssignment);
+        this.CoreEventEffect = new Modeler(pg, pgtypes.CoreEventEffect);
+        this.CoreForm = new CoreForm(pg);
+        this.CoreFormChannel = new Modeler(pg, pgtypes.CoreFormChannel);
+        this.CoreFormColumn = new Modeler(pg, pgtypes.CoreFormColumn);
+        this.CoreFormResponse = new CoreFormResponse(pg);
+        this.CoreEventResponse = new Modeler(pg, pgtypes.CoreEventResponse);
         this.ProfileChat = new ProfileChat(pg);
         this.Icon = new Icon(pg);
 
@@ -107,11 +123,12 @@ export default class Models {
         this.Connection = new Modeler(pg, pgtypes.Connection);
         this.ConnectionToken = new Modeler(pg, pgtypes.ConnectionToken);
         this.ConnectionFeature = new Modeler(pg, pgtypes.ConnectionFeature);
-        this.Task = new Modeler(pg, pgtypes.Task);
+        this.Integration = new Modeler(pg, pgtypes.Integration);
         this.Data = new Data(pg);
         this.Iconset = new Modeler(pg, pgtypes.Iconset);
         this.Layer = new Layer(pg);
         this.LayerIncoming = new Modeler(pg, pgtypes.LayerIncoming);
+        this.LayerMapping = new Modeler(pg, pgtypes.LayerMapping);
         this.LayerOutgoing = new Modeler(pg, pgtypes.LayerOutgoing);
     }
 }

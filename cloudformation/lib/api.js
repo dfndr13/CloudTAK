@@ -380,6 +380,19 @@ export default {
                                 cf.join(['arn:', cf.partition, ':events:', cf.region, ':', cf.accountId, ':rule/', cf.stackName, '-*'])
                             ]
                         },{
+                            Effect: 'Allow', // Register ETL with the mail router
+                            Action: [
+                                'ssm:PutParameter',
+                                'ssm:GetParameters',
+                                'ssm:DeleteParameter',
+                                'ssm:AddTagsToResource',
+                                'ssm:RemoveTagsFromResource',
+                                'ssm:ListTagsForResource'
+                            ],
+                            Resource: [
+                                cf.join(['arn:', cf.partition, ':ssm:', cf.region, ':', cf.accountId, ':parameter/tak-cloudtak-mail-', cf.ref('Environment'), '/layer/*'])
+                            ]
+                        },{
                             Effect: 'Allow',
                             Action: [
                                 'lambda:CreateEventSourceMapping',
@@ -421,6 +434,20 @@ export default {
                                 'logs:DescribeLogStreams'
                             ],
                             Resource: [cf.join(['arn:', cf.partition, ':logs:*:*:*'])]
+                        },{
+                            Effect: 'Allow',
+                            Action: [
+                                'secretsmanager:GetSecretValue'
+                            ],
+                            Resource: [
+                                cf.join(['arn:', cf.partition, ':secretsmanager:', cf.region, ':', cf.accountId, ':secret:', cf.stackName, '/*'])
+                            ]
+                        },{
+                            Effect: 'Allow',
+                            Action: [
+                                'kms:Decrypt'
+                            ],
+                            Resource: [cf.getAtt('KMS', 'Arn')]
                         }]
                     }
                 }],
@@ -457,8 +484,6 @@ export default {
                             Value: cf.join([
                                 'postgresql://',
                                 cf.sub('{{resolve:secretsmanager:${AWS::StackName}/rds/secret:SecretString:username:AWSCURRENT}}'),
-                                ':',
-                                cf.sub('{{resolve:secretsmanager:${AWS::StackName}/rds/secret:SecretString:password:AWSCURRENT}}'),
                                 '@',
                                 cf.getAtt('DBCluster', 'Endpoint.Address'),
                                 ':5432/tak_ps_etl?sslmode=require'
@@ -476,7 +501,15 @@ export default {
                         { Name: 'SubnetPublicA', Value: cf.importValue(cf.join(['tak-vpc-', cf.ref('Environment'), '-subnet-public-a'])) },
                         { Name: 'SubnetPublicB', Value: cf.importValue(cf.join(['tak-vpc-', cf.ref('Environment'), '-subnet-public-b'])) },
                         { Name: 'MediaSecurityGroup', Value: cf.ref('MediaSecurityGroup') },
-                        { Name: 'CLOUDTAK_Config_geofence_password', Value: cf.sub('{{resolve:secretsmanager:${AWS::StackName}/api/geofence}}') }
+                        { Name: 'SubnetPrivateA', Value: cf.importValue(cf.join(['tak-vpc-', cf.ref('Environment'), '-subnet-private-a'])) },
+                        { Name: 'SubnetPrivateB', Value: cf.importValue(cf.join(['tak-vpc-', cf.ref('Environment'), '-subnet-private-b'])) },
+                        { Name: 'ETLSecurityGroup', Value: cf.ref('ETLSecurityGroup') },
+                        { Name: 'NatPublicIPA', Value: cf.importValue(cf.join(['tak-vpc-', cf.ref('Environment'), '-nat-ip-a'])) },
+                        { Name: 'NatPublicIPB', Value: cf.importValue(cf.join(['tak-vpc-', cf.ref('Environment'), '-nat-ip-b'])) }
+                    ],
+                    Secrets: [
+                        { Name: 'PGPASSWORD', ValueFrom: cf.join([cf.ref('DBMasterSecret'), ':password::']) },
+                        { Name: 'CLOUDTAK_Config_geofence_password', ValueFrom: cf.ref('GeofenceSecret') }
                     ],
                     RestartPolicy: {
                         Enabled: true,
@@ -611,8 +644,21 @@ export default {
                 }],
                 ManagedPolicyArns: [
                     cf.join(['arn:', cf.partition, ':iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole']),
-                    cf.join(['arn:', cf.partition, ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'])
+                    cf.join(['arn:', cf.partition, ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole']),
+                    cf.join(['arn:', cf.partition, ':iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'])
                 ]
+            }
+        },
+        ETLSecurityGroup: {
+            Type: 'AWS::EC2::SecurityGroup',
+            Properties: {
+                GroupName: cf.join([cf.stackName, '-etl-sg']),
+                GroupDescription: 'Shared by VPC attached ETL Layer Lambdas',
+                VpcId: cf.importValue(cf.join(['tak-vpc-', cf.ref('Environment'), '-vpc'])),
+                Tags: [{
+                    Key: 'Name',
+                    Value: cf.join([cf.stackName, '-etl-sg'])
+                }]
             }
         }
     },
@@ -634,6 +680,13 @@ export default {
                 Name: cf.join([cf.stackName, '-etl-role'])
             },
             Value: cf.getAtt('ETLFunctionRole', 'Arn')
+        },
+        ETLSecurityGroup: {
+            Description: 'Security Group shared by VPC attached ETL Layer Lambdas',
+            Export: {
+                Name: cf.join([cf.stackName, '-etl-sg'])
+            },
+            Value: cf.ref('ETLSecurityGroup')
         }
     }
 };

@@ -1,5 +1,6 @@
 import { Type } from '@sinclair/typebox';
 import type CoT from '@tak-ps/node-cot';
+import type { WebSocket_Event } from '../enums.js';
 import type { GeofenceStatus } from '../../stateful/lib/connection-geofence.js';
 
 export type ConnStatus = 'live' | 'dead' | 'unknown';
@@ -61,7 +62,19 @@ export type SubmitCotsRequest = {
 export interface HubClient {
     connectionSync(id: number, opts?: { force?: boolean; deleted?: boolean }): Promise<ConnStatus>;
 
+    /**
+     * Drop a pooled profile connection so the next WebSocket or CoT submission
+     * rebuilds it from the profile's current certificate
+     */
+    profileSync(username: string): Promise<void>;
+
     connectionStatus(ids: Array<number | string>): Promise<Record<string, ConnStatus>>;
+
+    /**
+     * Active channel bitpos set cached on a pooled connection, or null when
+     * the connection is not pooled or its channel list has not loaded yet
+     */
+    connectionChannels(id: number | string): Promise<number[] | null>;
 
     connectionSummary(): Promise<PoolSummary>;
 
@@ -69,13 +82,17 @@ export interface HubClient {
 
     submitCots(req: SubmitCotsRequest): Promise<void>;
 
-    wsNotify(key: string, payload: unknown, excludeSession?: string): Promise<void>;
+    wsNotify(key: string, payload: unknown, excludeSession?: string, event?: WebSocket_Event): Promise<void>;
 
     wsPresence(keys: string[]): Promise<PresenceMap>;
 
+    wsRevoke(sessions: string[]): Promise<void>;
+
     eventSet(layerid: number, cron: string | null): Promise<void>;
 
-    coreEventSubmit(event: string): Promise<void>;
+    featureRefresh(connection: number): Promise<void>;
+
+    coreEntitySubmit(entity: string): Promise<void>;
 
     geofenceRefresh(): Promise<void>;
 
