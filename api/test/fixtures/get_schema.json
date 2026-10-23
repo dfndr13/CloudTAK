@@ -1808,5 +1808,20 @@
         "body": false,
         "query": true,
         "res": true
+    },
+    "GET /simulator/units": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /simulator/units/:uid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /simulator/units/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
     }
 }
