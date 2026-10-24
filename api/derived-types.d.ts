@@ -64326,7 +64326,7 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        /** @description e.g. "KSF 2026" */
+                        /** @description Event name */
                         name: string;
                     };
                 };
