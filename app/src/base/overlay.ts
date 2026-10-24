@@ -302,14 +302,25 @@ export default class OverlayManager extends BaseInterface {
     static async generate(
         body: paths['/api/profile/overlay']['post']['requestBody']['content']['application/json']
     ): Promise<DBOverlay> {
+        // A basemap's stored style template (e.g. a vector basemap's circle/line layers)
+        // can't carry a real `source` yet: that's this overlay's own id, which doesn't exist
+        // until after the create. Sending it as-is fails the server's style validation, so
+        // create without styles, then fill the template in against the new id.
+        const template = this.isStyleTemplate(body.styles) ? body.styles : undefined;
+
         const res = await server.POST('/api/profile/overlay', {
-            body
+            body: template ? { ...body, styles: undefined } : body
         });
 
         if (res.error) throw new Error(res.error.message);
         if (!res.data) throw new Error('Failed to create overlay');
 
         await db.overlay.put(res.data as DBOverlay);
+
+        if (template) {
+            await this.update(String(res.data.id), { styles: template });
+            return (await db.overlay.get(res.data.id)) ?? res.data as DBOverlay;
+        }
 
         return res.data as DBOverlay;
     }
@@ -319,6 +330,12 @@ export default class OverlayManager extends BaseInterface {
         body: paths['/api/profile/overlay/{:overlay}']['patch']['requestBody']['content']['application/json']
     ): Promise<void> {
         const overlayId = this.overlayId(id);
+
+        // e.g. switching the active basemap to a vector basemap with a stored style template
+        if (this.isStyleTemplate(body.styles)) {
+            body = { ...body, styles: this.prepareStyleTemplate(overlayId, body.styles) };
+        }
+
         const res = await server.PATCH('/api/profile/overlay/{:overlay}', {
             params: {
                 path: {
@@ -387,6 +404,24 @@ export default class OverlayManager extends BaseInterface {
         }
 
         return overlays.sort(OverlayManager.compareStack);
+    }
+
+    /** True for template styles: layers that still need this overlay's id as their `source` */
+    private static isStyleTemplate(styles?: Array<unknown>): styles is Array<unknown> {
+        return Array.isArray(styles) && styles.some((layer) => {
+            const l = layer as { type?: string; source?: unknown };
+            return l.type !== 'background' && !l.source;
+        });
+    }
+
+    /** Prefix each layer id with the overlay id and point non-background layers at its source */
+    private static prepareStyleTemplate(overlayId: number, styles: Array<unknown>): Array<unknown> {
+        return styles.map((layer) => {
+            const l = { ...(layer as { id: string; type?: string; source?: string }) };
+            l.id = `${overlayId}-${l.id}`;
+            if (l.type !== 'background') l.source = String(overlayId);
+            return l;
+        });
     }
 
     private static overlayId(id: string | number): number {
