@@ -2001,7 +2001,7 @@
     },
     "GET /replay/event/:eventid/export": {
         "body": false,
-        "query": false,
+        "query": true,
         "res": true
     },
     "DELETE /replay/event/:eventid": {
