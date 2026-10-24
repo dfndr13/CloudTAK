@@ -2128,5 +2128,15 @@
         "body": false,
         "query": true,
         "res": true
+    },
+    "GET /livewx/lightning": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /livewx/proxy": {
+        "body": false,
+        "query": true,
+        "res": false
     }
 }

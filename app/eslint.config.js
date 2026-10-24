@@ -4,6 +4,8 @@ import eslintPluginVue from 'eslint-plugin-vue';
 import ts from 'typescript-eslint';
 
 export default ts.config(
+    /* cloudtak-marketplace-plugins */
+    { ignores: ['plugins/livewx-radar/**', 'plugins/replay/**', 'plugins/simulator/**', 'plugins/tak-dispatcher/**'] },
     js.configs.recommended,
     ...ts.configs.recommended,
     ...eslintPluginVue.configs['flat/recommended'],

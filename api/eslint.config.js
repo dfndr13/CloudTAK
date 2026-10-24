@@ -12,6 +12,8 @@ const boundary = (groups, message) => ({
 });
 
 export default tseslint.config(
+    /* cloudtak-marketplace-routes */
+    { ignores: ['stateless/routes/plugin-*.ts'] },
     eslint.configs.recommended,
     ...tseslint.configs.recommended,
     stylistic.configs.customize({
