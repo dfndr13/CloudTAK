@@ -1,9 +1,10 @@
 # media-infra container patches
 
-**PINNED AT `v9.9.0`, NOT `v9.11.0` — see "2026-08-19 regression and downgrade"
-below before bumping this again.**
+**PINNED AT `v9.12.1` (MediaMTX v1.21.2) since 2026-10-26** — see "2026-10-26
+re-bump to v9.12.1" below. Read "2026-08-19 regression and downgrade" before
+bumping this again.
 
-`cloudtak-media-1` runs `ghcr.io/dfpc-coe/media-infra:v9.9.0` — a third-party image.
+`cloudtak-media-1` runs `ghcr.io/dfpc-coe/media-infra:v9.12.1` — a third-party image.
 There's no local source checkout for it in this repo, so two bugs found and fixed
 here on 2026-08-05 can't be fixed "properly" in source. Instead, `apply-patches.sh`
 patches the compiled files inside the container at every startup, before the app
@@ -112,7 +113,7 @@ directory bind-mounted read-only at `/patches`. On every container start, before
 
 The bump to `v9.11.0` on 2026-08-11 (see git history) was live for about a
 week. During that week, live video playback on at least one real EUD-backed
-CoT ("Halton" - phone publishing H264 + mono 44.1kHz AAC over cellular)
+CoT (a phone publishing H264 + mono 44.1kHz AAC over cellular)
 degraded from working fine to persistent audio-track stuttering
 (`bufferAppendNoProgress` in hls.js, browser MediaSource-level, not visible
 in VLC or via ffprobe of the actual segments - both the raw RTSP source and
@@ -164,6 +165,30 @@ open watching for `bufferAppendNoProgress`) against the new version *before*
 rolling it out, not after. A quiet few-minute smoke test at deploy time
 would not have caught this - it took a live camera under real network
 conditions and sustained watching to surface.
+
+## 2026-10-26 re-bump to v9.12.1
+
+Reason: v9.12.x bundles MediaMTX v1.21.2, which fixes several MediaMTX security
+advisories that affect v1.19.3 (a Control API CSRF, RTMP malformed-config panics,
+MoQ denial-of-service issues). Exposure here was already limited: the MediaMTX API
+is not published outside the container, and RTMP/SRT publishing is
+lease-authenticated.
+
+Before the bump, both snapshots were compared against the v9.12.1 image:
+`persist.js` is byte-identical to `persist.js.patched` (upstream fix) and
+`payload.js` is byte-identical to `payload.js.orig`, so `apply-patches.sh` logs
+`persist.js already patched` and applies the hairpin patch unchanged. The image
+entrypoint (`/start`) and exposed ports are the same as v9.9.0.
+
+Live test (the scenario from the 2026-08-19 section): a phone publishing H264 +
+MPEG-4 audio over cellular, watched in CloudTAK through a video connection for
+about 10 minutes, with a baseline on v9.9.0 first. Result on v9.12.1: video
+smooth, two very short buffering moments, ~7 s end-to-end latency (normal for
+HLS), no MediaMTX errors. The HLS `reader is too slow, discarding N frames`
+warnings seen during the test were also present on the v9.9.0 baseline. Audio
+quality was not evaluated.
+
+Rollback: set the image back to `v9.9.0` and run `docker compose up -d media`.
 
 ## If this fails after a media-infra version bump
 
