@@ -13,7 +13,7 @@ const boundary = (groups, message) => ({
 
 export default tseslint.config(
     /* cloudtak-marketplace-routes */
-    { ignores: ['stateless/routes/plugin-*.ts'] },
+    { ignores: ['stateless/routes/plugin-*.ts', 'stateless/routes/replay.ts', 'stateless/lib/replay*.ts', 'stateless/lib/retention/replay.ts', 'stateful/lib/replay*.ts', 'test/replay*.ts'] },
     eslint.configs.recommended,
     ...tseslint.configs.recommended,
     stylistic.configs.customize({

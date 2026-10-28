@@ -2138,5 +2138,20 @@
         "body": false,
         "query": true,
         "res": false
+    },
+    "GET /sidebar-config": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /sidebar-config": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /sidebar-config/push": {
+        "body": false,
+        "query": false,
+        "res": true
     }
 }

@@ -1,5 +1,4 @@
 // @ts-nocheck
-/* eslint-disable */
 /**
  * CloudTAK server routes for LiveWX:
  *  - Blitzortung relay (clients never connect to Blitzortung directly)
@@ -59,7 +58,6 @@ const PROXY_ALLOW = new Set([
     'data.cocorahs.org',
     'waterservices.usgs.gov',
     'waterdata.usgs.gov',
-    'spot.weather.gov',
     'geocoding.geo.census.gov',
     'nomads.ncep.noaa.gov',
     'radar.weather.gov',

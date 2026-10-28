@@ -43,6 +43,8 @@
     "plugins/livewx-radar",
     "plugins/replay",
     "plugins/simulator",
-    "plugins/tak-dispatcher"
+    "plugins/tak-dispatcher",
+    "plugins/sidebar-configurator",
+    "plugins/address-search"
   ]
 }
