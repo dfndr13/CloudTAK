@@ -31,6 +31,7 @@ services:
             - NODE_EXTRA_CA_CERTS=/tak-ca.pem
         volumes:
             - /opt/tak/certs/files/ca.pem:/tak-ca.pem
+            - ./data/address-packs:/home/etl/app/dist/address-packs:ro
 
     tiles:
         build:
