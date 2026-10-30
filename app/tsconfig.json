@@ -45,6 +45,8 @@
     "plugins/simulator",
     "plugins/tak-dispatcher",
     "plugins/sidebar-configurator",
-    "plugins/address-search"
+    "plugins/address-search",
+    "plugins/rubber-sheet",
+    "plugins/incident-manager"
   ]
 }

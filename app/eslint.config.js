@@ -5,7 +5,7 @@ import ts from 'typescript-eslint';
 
 export default ts.config(
     /* cloudtak-marketplace-plugins */
-    { ignores: ['plugins/address-search/**', 'plugins/livewx-radar/**', 'plugins/replay/**', 'plugins/sidebar-configurator/**', 'plugins/simulator/**', 'plugins/tak-dispatcher/**'] },
+    { ignores: ['plugins/address-search/**', 'plugins/incident-manager/**', 'plugins/livewx-radar/**', 'plugins/replay/**', 'plugins/rubber-sheet/**', 'plugins/sidebar-configurator/**', 'plugins/simulator/**', 'plugins/tak-dispatcher/**'] },
     js.configs.recommended,
     ...ts.configs.recommended,
     ...eslintPluginVue.configs['flat/recommended'],
