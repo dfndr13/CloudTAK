@@ -1,7 +1,7 @@
 {
   "name": "@tak-ps/cloudtak",
   "type": "module",
-  "version": "13.113.0",
+  "version": "13.118.0",
   "types": "dist/types/plugin.d.ts",
   "files": [
     "dist/types"
@@ -45,10 +45,11 @@
     "@capacitor/keyboard": "^8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
-    "@capawesome/capacitor-network": "0.1.4",
+    "@capawesome/capacitor-network": "0.1.5",
     "@capgo/background-geolocation": "^8.0.39",
     "@capgo/capacitor-compass": "^8.1.17",
     "@capgo/capacitor-updater": "^8.50.1",
+    "@fontsource/open-sans": "^5.3.0",
     "@mapbox/tile-cover": "^3.0.2",
     "@scalar/api-reference": "^1.66.1",
     "@simplewebauthn/browser": "^14.0.0",
@@ -94,6 +95,7 @@
     "maplibre-gl": "npm:@tak-ps/maplibre-gl@^6.15.0",
     "milsymbol": "^3.0.2",
     "openapi-fetch": "^0.17.0",
+    "pdfjs-dist": "4.10.38",
     "phone": "^3.1.59",
     "pinia": "^4.0.0",
     "pmtiles": "^4.5.0",
@@ -108,8 +110,7 @@
     "vue-component-type-helpers": "^3.0.7",
     "vue-eslint-parser": "^10.4.1",
     "vue-router": "^5.0.0",
-    "yaml": "^2.8.2",
-    "pdfjs-dist": "4.10.38"
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.2",

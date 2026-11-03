@@ -18,6 +18,8 @@
 - ETLs in v14 will be required to declare Named Schemas, single schema support will be removed
 - The Minio Legacy Store will be removed in V14 - Ensure you have migrated to Garage before updating to v14.
 - CoreEntity single external ID support will be removed in v14 - ensure you have migrated to multi-system external IDs before updating to v14.
+- The `GET /api/fonts/:fontstack/:start-:end.pbf` glyph endpoint is deprecated and will be removed in v14 - the web app now draws labels from bundled font files via the style `font-faces` property
+- The `GET /api/basemap/:basemapid/tiles` and `GET /api/basemap/:basemapid/tiles/:z/:x/:y` proxy routes are deprecated and will be removed in v14 - basemap TileJSON and tiles are served by the PMTiles tile server at `/tiles/basemap/:basemapid/tiles[/:z/:x/:y]`
 
 ### Beta Notice
 
@@ -30,6 +32,76 @@
 - :bug: Make `retention::replay::enabled` opt-in by default, consistent with the other retention tasks (previously defaulted to enabled)
 - :bug: Fix double-posted `Feature_Archived_Removed` worker message when deleting an archived CONNECTION-origin feature
 - :bug: Ensure the Media Server admin config UI keeps the legacy `media::url` key in sync with `media::public_url` when saved, instead of leaving it stale
+
+### v13.118.0 - 2026-11-02
+
+- :tada: Unify the `Your Features` and `Devices` menus into a single `Features` menu with `Features`, `Events` & `Devices` tabs - `/menu/devices` redirects to `/menu/features/devices`
+
+### v13.117.2 - 2026-11-02
+
+- :rocket: Improve rendering performance on iOS by introduing a Feature Queue to avoid bottlenecking on indexDB
+
+### v13.117.1 - 2026-11-01
+
+- :bug: Pass `API_URL` to the Docker Compose `tiles` service so the PMTiles server can resolve basemap config (#1993)
+
+### v13.117.0 - 2026-10-31
+
+- :tada: Import WMTS capabilities URLs as basemaps (RESTful tile templates and KVP GetTile, Web Mercator tile matrix sets, `?layer=` selection)
+- :bug: Return a 400 with a clear message instead of a 500 when a basemap import URL returns XML, HTML or malformed JSON (#1989)
+- :rocket: `GET /api/basemap/:basemapid` accepts basemap sharing tokens so tile servers can resolve basemap config with the token they are handed
+- :tada: PMTiles tile server serves CloudTAK basemap TileJSON and tiles at `/tiles/basemap/:basemapid/tiles[/:z/:x/:y]`, mirroring the API routes: bearer or `?token=` auth, sharing tokens, owner/admin scoping, ESRI metadata merge, hosted upstream TileJSON, bounds short-circuit and zxy/hosted/MapServer/ImageServer/FeatureServer tile proxying, with basemap config cached in memory per container
+- :rocket: Expose `tilejson` on Basemap responses so tile servers can resolve hosted upstream TileJSON
+- :bug: Apply the SSRF URL check to ESRI layer metadata lookups, which previously bypassed it via esri-dump
+- :rocket: Add PMTiles API Gateway HTTP status widget to the ELB CloudWatch dashboard
+- :rocket: Basemap TileJSON and ATAK share URLs advertise tiles on the PMTiles tile server instead of the API - basemap edits and sharing revocations take up to 60 seconds to reach warm tile server containers
+- :rocket: PMTiles Lambda runs with 1536 MB, a 30 second timeout matching the API Gateway cap, a reserved concurrency ceiling (`PMTilesReservedConcurrency`) and a `live` alias with provisioned concurrency (`PMTilesProvisionedConcurrency`) so the first tile after idle is not a cold start
+- :rocket: PMTiles tile server returns 413 for proxied or rendered tiles over the 6 MiB Lambda response limit instead of failing the invocation
+- :bug: Archive 2D line and polygon CoTs to `connection_features` by padding a Z coordinate, dedupe repeated UIDs within a batch, and persist `enabled_geofence` from the CoT instead of resetting it on every archive
+
+### v13.116.1 - 2026-10-30
+
+- :rocket: Improvements to Rendering Performance
+- :bug: Fix double unit conversion in terrain elevation display
+
+### v13.116.0 - 2026-10-27
+
+- :bug: Improve History Performance
+- :tada: Add `profile` Plugin API to pulling user preferences
+
+### v13.115.1 - 2026-10-27
+
+- :bug: The Mission Archive API doesn't support GUIDs which would result in the download silently failing - Closes: Mission *Download Archive* returns an empty file #1977
+
+### v13.115.0 - 2026-10-27
+
+- :tada: `API` Add `GET /api/marti/cot` to list every CoT event visible to the user within a time window of at most 24 hours (`start`/`end` or `secago`), optionally restricted to a `bbox` - backed by the TAK Server `/Marti/api/cot/sa` query
+- :tada: `UI` Breadcrumb trails are now built from a local `feature_history` table of discrete timestamped points - hovering a point shows who/when, clicking it opens the properties that CoT reported at that moment; the dashed trail line is derived from the same points
+- :tada: `UI` The History menu can load every CoT's history for a time window (optionally only the current map view) alongside the existing per-CoT history loader in the CoT view
+- :tada: `PluginAPI` Add `cot.historyAll()` plus `breadcrumb.history.{load,loadAll,list,stream,clear}` and a `breadcrumb.history.popup` renderer registry so plugins can surface their own properties on hovered history points - existing `cot.history()` and `breadcrumb.live.*` are unchanged
+- :arrow_up: `API` Update `@tak-ps/node-tak` to `^12.32.0` for the `Query.saFeats` Situational Awareness client
+
+### v13.114.2 - 2026-10-26
+
+- :tada: Clicking on the name of the mission zooms to the mission extent
+- :rocket: Show labels next to Data Sync tabs when the sidebar is wide enough to avoid truncation, and show the tab icon only when the sidebar is narrow
+- :rocket: Only load the last 7 days of changes by default in the Mission Timeline view
+- :tada: `API` CoreEvent & CoreDevice `links` accept `tel:` URLs alongside `https://` so a marker can carry a tappable phone number - ATAK opens the `r-u` link in the dialer, which no longer carries a `text/html` mime (#1954)
+- :rocket: `UI` Core Entity `tel:` links show a phone icon and open in the current window
+
+### v13.114.1 - 2026-10-26
+
+- :rocket: Remove need to Glyphs API entirely
+
+### v13.114.0 - 2026-10-26
+
+- :bug: `API` Mission file uploads (`POST /api/marti/missions/:guid/upload`) of text, XML, JSON & `application/octet-stream` files reached TAK Server as empty bodies and were rejected - the global body parsers consumed the raw request stream before it could be forwarded
+- :rocket: `API` `POST /api/marti/missions/:guid/upload` now accepts a `multipart/form-data` upload like every other file route - the file is staged on disk so TAK Server receives the required `Content-Length`; the `name` query param is now an optional override of the form file name
+- :rocket: `UI` Mission file uploads use the standard multipart upload flow
+- :bug: `UI` Failed Mission file uploads show the API error message instead of the bare HTTP status text
+- :rocket: `UI` Map labels are drawn from a bundled Open Sans Bold font via the style `font-faces` property instead of glyph ranges fetched from `/api/fonts`, so labels never wait on the network
+- :rocket: `UI` Background location now has its own prominent disclosure, shown immediately after the foreground location grant and again before every settings hand-off from Settings > Permissions, to satisfy the Google Play User Data policy - the shared `LocationDisclosure` component names background use ("even when the app is closed or not in use") and requires an explicit `Agree and continue`
+- :bug: `UI` On Android, Settings > Permissions showed no action for Background Location until it had been denied once, leaving users who chose "While using the app" with no way to upgrade from inside the app
 
 ### v13.113.0 - 2026-10-22
 
