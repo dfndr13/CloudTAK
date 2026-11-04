@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "target": "ES2023",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "lib": ["ES2023", "DOM", "WebWorker"],
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "noEmit": true,
+        "allowImportingTsExtensions": true,
+        "types": ["node"]
+    },
+    "include": ["lib/**/*.ts", "test/**/*.ts", "bench/**/*.ts"],
+    "exclude": ["lib/core-bridge.ts", "lib/state.ts", "lib/manifest-sync.ts"]
+}
