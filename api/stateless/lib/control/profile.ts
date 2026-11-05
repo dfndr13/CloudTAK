@@ -8,7 +8,7 @@ import { ProfileResponse } from '../../../common/types.js';
 import ProfileOverlayControl from '../../../common/control/profile-overlay.js';
 
 export const ProfileConfigDefaults = {
-    'display::stale': Profile_Stale.TenMinutes,
+    'display::stale': Profile_Stale.TwoMinutes,
     'display::distance': Profile_Distance.MILE,
     'display::elevation': Profile_Elevation.FEET,
     'display::area': Profile_Area.ACRE,
@@ -180,7 +180,7 @@ export default class ProfileControl {
 
         return {
             stale: {
-                value: toEnum.fromString(Type.Enum(Profile_Stale), final.stale || Profile_Stale.TenMinutes),
+                value: toEnum.fromString(Type.Enum(Profile_Stale), final.stale || Profile_Stale.TwoMinutes),
                 options: Object.values(Profile_Stale),
             },
             distance: {

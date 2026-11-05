@@ -2482,7 +2482,7 @@ export interface paths {
                                 /** @description Base64 encoded Preview Image */
                                 image: string;
                             }[];
-                            "display::stale"?: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                            "display::stale"?: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             "display::distance"?: "meter" | "kilometer" | "mile";
                             "display::elevation"?: "meter" | "feet";
                             "display::area"?: "square meter" | "square feet" | "acre" | "hectare";
@@ -2786,7 +2786,7 @@ export interface paths {
                             /** @description Base64 encoded Preview Image */
                             image: string;
                         }[];
-                        "display::stale"?: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                        "display::stale"?: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                         "display::distance"?: "meter" | "kilometer" | "mile";
                         "display::elevation"?: "meter" | "feet";
                         "display::area"?: "square meter" | "square feet" | "acre" | "hectare";
@@ -3015,7 +3015,7 @@ export interface paths {
                                 /** @description Base64 encoded Preview Image */
                                 image: string;
                             }[];
-                            "display::stale"?: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                            "display::stale"?: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             "display::distance"?: "meter" | "kilometer" | "mile";
                             "display::elevation"?: "meter" | "feet";
                             "display::area"?: "square meter" | "square feet" | "acre" | "hectare";
@@ -3222,7 +3222,7 @@ export interface paths {
                         "application/json": {
                             stale: {
                                 /** @default 10 Minutes */
-                                value: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                                value: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                                 options: string[];
                             };
                             distance: {
@@ -55358,7 +55358,7 @@ export interface paths {
                             display_style: "System Default" | "Light" | "Dark";
                             display_coordinate: "dd" | "dm" | "dms" | "mgrs" | "utm";
                             display_icon_rotation: boolean;
-                            display_stale: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                            display_stale: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             display_text: "Small" | "Medium" | "Large";
                             display_distance: "meter" | "kilometer" | "mile";
                             display_elevation: "meter" | "feet";
@@ -55486,7 +55486,7 @@ export interface paths {
                         display_style?: "System Default" | "Light" | "Dark";
                         display_coordinate?: "dd" | "dm" | "dms" | "mgrs" | "utm";
                         display_icon_rotation?: boolean;
-                        display_stale?: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                        display_stale?: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                         display_text?: "Small" | "Medium" | "Large";
                         display_distance?: "meter" | "kilometer" | "mile";
                         display_elevation?: "meter" | "feet";
@@ -55545,7 +55545,7 @@ export interface paths {
                             display_style: "System Default" | "Light" | "Dark";
                             display_coordinate: "dd" | "dm" | "dms" | "mgrs" | "utm";
                             display_icon_rotation: boolean;
-                            display_stale: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                            display_stale: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             display_text: "Small" | "Medium" | "Large";
                             display_distance: "meter" | "kilometer" | "mile";
                             display_elevation: "meter" | "feet";
@@ -59279,7 +59279,7 @@ export interface paths {
                             display_style: "System Default" | "Light" | "Dark";
                             display_coordinate: "dd" | "dm" | "dms" | "mgrs" | "utm";
                             display_icon_rotation: boolean;
-                            display_stale: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                            display_stale: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             display_text: "Small" | "Medium" | "Large";
                             display_distance: "meter" | "kilometer" | "mile";
                             display_elevation: "meter" | "feet";
@@ -59561,7 +59561,7 @@ export interface paths {
                             display_style: "System Default" | "Light" | "Dark";
                             display_coordinate: "dd" | "dm" | "dms" | "mgrs" | "utm";
                             display_icon_rotation: boolean;
-                            display_stale: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
+                            display_stale: "Immediate" | "2 Minutes" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             display_text: "Small" | "Medium" | "Large";
                             display_distance: "meter" | "kilometer" | "mile";
                             display_elevation: "meter" | "feet";

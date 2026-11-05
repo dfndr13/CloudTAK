@@ -19,8 +19,8 @@ test('GET api/config/display', async () => {
 
         assert.deepEqual(res.body, {
             stale: {
-                value: '10 Minutes',
-                options: ['Immediate', '10 Minutes', '30 Minutes', '1 Hour', 'Never'],
+                value: '2 Minutes',
+                options: ['Immediate', '2 Minutes', '10 Minutes', '30 Minutes', '1 Hour', 'Never'],
             },
             distance: {
                 value: 'mile',

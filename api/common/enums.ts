@@ -206,6 +206,7 @@ export enum Profile_Text {
 
 export enum Profile_Stale {
     Immediate = 'Immediate',
+    TwoMinutes = '2 Minutes',
     TenMinutes = '10 Minutes',
     ThirtyMinutes = '30 Minutes',
     OneHour = '1 Hour',

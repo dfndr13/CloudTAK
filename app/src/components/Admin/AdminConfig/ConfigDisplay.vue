@@ -118,7 +118,7 @@ const displayKeys: DisplayConfigKey[] = [
 
 function createDisplayConfig(): DisplayConfig {
     return {
-        'display::stale': '10 Minutes',
+        'display::stale': '2 Minutes',
         'display::distance': 'mile',
         'display::elevation': 'feet',
         'display::area': 'acre',

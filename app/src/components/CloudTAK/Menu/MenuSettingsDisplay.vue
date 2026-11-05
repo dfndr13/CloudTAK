@@ -136,7 +136,7 @@ const settings: SettingItem[] = [
         label: 'Remove Stale Elements',
         icon: IconClock,
         type: 'enum',
-        options: ['Immediate', '10 Minutes', '30 Minutes', '1 Hour', 'Never'],
+        options: ['Immediate', '2 Minutes', '10 Minutes', '30 Minutes', '1 Hour', 'Never'],
     },
     {
         key: 'display_text',

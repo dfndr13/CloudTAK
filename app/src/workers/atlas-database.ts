@@ -430,6 +430,7 @@ export default class AtlasDatabase {
     static staleElapsed(display_stale: string, stale: number, now: number): boolean {
         return !['Never'].includes(display_stale) && (
             display_stale === 'Immediate'       && now > stale
+            || display_stale === '2 Minutes'    && now > stale + 120000
             || display_stale === '10 Minutes'   && now > stale + 600000
             || display_stale === '30 Minutes'   && now > stale + 600000 * 3
             || display_stale === '1 Hour'       && now > stale + 600000 * 6
