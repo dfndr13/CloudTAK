@@ -51,6 +51,7 @@ export default class AtlasProfile {
     profile_created?: ProfileConfig<'created'>;
     profile_updated?: ProfileConfig<'updated'>;
     display_stale?: ProfileConfig<'display_stale'>;
+    channelClear?: ReturnType<typeof setTimeout>;
 
     constructor(atlas: Atlas) {
         this.atlas = atlas;
@@ -226,6 +227,8 @@ export default class AtlasProfile {
         this.display_stale?.destroy();
         this.display_stale = undefined;
 
+        clearTimeout(this.channelClear);
+
         this.username = null;
         this.server = null;
         this.location = {
@@ -367,12 +370,7 @@ export default class AtlasProfile {
             if (ch.name === name) ch.active = active;
         });
 
-        await this.atlas.db.clear({
-            ignoreArchived: true,
-            skipNetwork: false
-        })
-
-        return await this.updateChannels(channels);
+        return await this.applyChannels(channels, active);
     }
 
     async setAllChannels(active: boolean): Promise<Array<GroupChannel>> {
@@ -381,12 +379,34 @@ export default class AtlasProfile {
             ch.active = active;
         });
 
-        await this.atlas.db.clear({
-            ignoreArchived: true,
-            skipNetwork: false
-        })
+        return await this.applyChannels(channels, active);
+    }
 
-        return await this.updateChannels(channels);
+    /**
+     * TAK has to stop sending before the map is cleared, or CoTs arriving in
+     * between land on the cleared map and sit there frozen until they stale out.
+     * Turning a channel on leaves nothing to remove.
+     */
+    private async applyChannels(channels: Array<GroupChannel>, active: boolean): Promise<Array<GroupChannel>> {
+        clearTimeout(this.channelClear);
+
+        const updated = await this.updateChannels(channels);
+
+        if (!active) {
+            const clear = () => this.atlas.db.clear({
+                ignoreArchived: true,
+                skipNetwork: false
+            });
+
+            await clear();
+
+            // CoTs that were already on their way when TAK stopped sending
+            this.channelClear = setTimeout(() => {
+                void clear();
+            }, 2000);
+        }
+
+        return updated;
     }
 
     async updateChannels(channels: Array<GroupChannel>): Promise<Array<GroupChannel>> {
