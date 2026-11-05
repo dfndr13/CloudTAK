@@ -27,6 +27,7 @@
 
 ### Pending Release
 
+- :rocket: Hovering an aircraft shows its details, trail popups show altitude, and the Breadcrumb menu has a Clear Trail button
 - :rocket: Draw breadcrumb trails as a solid line with no visible point markers; hovering or clicking along the trail still shows each report
 - :rocket: Add a 30 Minutes window to Load History on a feature breadcrumb
 - :bug: Stop frozen CoTs remaining after a channel is turned off by updating TAK before clearing the map

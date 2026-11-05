@@ -55,6 +55,12 @@
                 >
                     Load
                 </TablerButton>
+                <TablerButton
+                    class='btn-outline-secondary w-100 mt-2'
+                    @click.stop.prevent='clearTrail'
+                >
+                    Clear Trail
+                </TablerButton>
             </div>
 
             <div
@@ -124,6 +130,20 @@ async function onLiveToggle(enabled: boolean): Promise<void> {
 function windowSeconds(relative: string): number {
     const [amount, unit] = relative.split(' ');
     return Number(amount) * (unit.startsWith('Minute') ? 60 : 60 * 60);
+}
+
+async function clearTrail() {
+    error.value = null;
+
+    try {
+        // Removes the points and also stops live recording
+        await mapStore.worker.db.breadcrumb.remove(props.uid);
+        liveEnabled.value = false;
+        loaded.value = null;
+        emit('live', false);
+    } catch (err) {
+        error.value = err instanceof Error ? err.message : String(err);
+    }
 }
 
 async function loadBreadcrumb() {

@@ -16,6 +16,11 @@ export const HISTORY_POINT_LAYER = 'cloudtak-history-point';
 export const HISTORY_DEFAULT_COLOR = '#ff0000';
 export const HISTORY_POPUP_CLASS = 'cloudtak-history-popup';
 
+/** Live CoT point layers of the internal overlay */
+const LIVE_LAYERS = ['-1', '-1-icon'];
+/** CoT's value for an unknown altitude */
+const UNKNOWN_HAE = 9999999;
+
 const RENDER_DEBOUNCE_MS = 300;
 const STYLE_ID = 'cloudtak-history-style';
 
@@ -171,7 +176,10 @@ export function historyPointFeature(row: DBFeatureHistory): Feature {
  * @param typeName Human readable CoT type, as the feature views show it;
  *                 falls back to the raw type code until it is resolved
  */
-export function defaultPopup(row: DBFeatureHistory, typeName?: string): string {
+export function defaultPopup(
+    row: Pick<DBFeatureHistory, 'callsign' | 'type' | 'time' | 'properties' | 'geometry'>,
+    typeName?: string
+): string {
     const lines = [
         `<div class='cloudtak-history-popup-title'>${escapeHtml(row.callsign)}</div>`,
     ];
@@ -189,7 +197,31 @@ export function defaultPopup(row: DBFeatureHistory, typeName?: string): string {
         lines.push(`<div>Course: ${escapeHtml(Math.round(course))}°</div>`);
     }
 
+    const hae = row.geometry.type === 'Point' ? row.geometry.coordinates[2] : undefined;
+    if (typeof hae === 'number' && Number.isFinite(hae) && hae !== UNKNOWN_HAE) {
+        lines.push(`<div>Alt: ${escapeHtml(Math.round(hae * 3.28084).toLocaleString())} ft</div>`);
+    }
+
     return lines.join('');
+}
+
+/** CoT air tracks only: `a-<affiliation>-A` and anything beneath it */
+export function isAircraftType(type: unknown): boolean {
+    return typeof type === 'string' && /^a-[^-]+-A(-|$)/.test(type);
+}
+
+/** The trail popup for a live aircraft, plus its remarks */
+export function aircraftPopup(feat: Feature, typeName?: string): string {
+    const props = feat.properties;
+    const remarks = props.remarks ? `<div>${escapeHtml(props.remarks)}</div>` : '';
+
+    return defaultPopup({
+        callsign: props.callsign,
+        type: props.type,
+        time: Date.parse(props.time),
+        properties: props as DBFeatureHistory['properties'],
+        geometry: feat.geometry as DBFeatureHistory['geometry'],
+    }, typeName) + remarks;
 }
 
 /**
@@ -218,6 +250,10 @@ export default class HistoryLayer {
     private queuedAll: boolean;
     private busy: Promise<void> | null;
     private popup: mapgl.Popup | null;
+    private livePopup: mapgl.Popup | null;
+    /** The live feature under the cursor, and whether it is showing an aircraft popup */
+    private liveId: string | null;
+    private liveShown: boolean;
     private initialized: boolean;
 
     constructor(mapStore: ReturnType<typeof useMapStore>) {
@@ -233,8 +269,13 @@ export default class HistoryLayer {
         this.queuedAll = false;
         this.busy = null;
         this.popup = null;
+        this.livePopup = null;
+        this.liveId = null;
+        this.liveShown = false;
         this.initialized = false;
 
+        this.onLiveHover = this.onLiveHover.bind(this);
+        this.onLiveLeave = this.onLiveLeave.bind(this);
         this.onHover = this.onHover.bind(this);
         this.onLeave = this.onLeave.bind(this);
         this.onClick = this.onClick.bind(this);
@@ -290,6 +331,8 @@ export default class HistoryLayer {
         map.on('mousemove', HISTORY_POINT_LAYER, this.onHover);
         map.on('mouseleave', HISTORY_POINT_LAYER, this.onLeave);
         map.on('click', HISTORY_POINT_LAYER, this.onClick);
+        map.on('mousemove', LIVE_LAYERS, this.onLiveHover);
+        map.on('mouseleave', LIVE_LAYERS, this.onLiveLeave);
 
         this.initialized = true;
         this.restack();
@@ -417,7 +460,9 @@ export default class HistoryLayer {
         this.queuedAll = false;
 
         this.onLeave();
+        this.onLiveLeave();
         this.popup = null;
+        this.livePopup = null;
         this.rows.clear();
         this.byUid.clear();
 
@@ -431,6 +476,8 @@ export default class HistoryLayer {
             map.off('mousemove', HISTORY_POINT_LAYER, this.onHover);
             map.off('mouseleave', HISTORY_POINT_LAYER, this.onLeave);
             map.off('click', HISTORY_POINT_LAYER, this.onClick);
+            map.off('mousemove', LIVE_LAYERS, this.onLiveHover);
+            map.off('mouseleave', LIVE_LAYERS, this.onLiveLeave);
 
             if (map.getLayer(HISTORY_POINT_LAYER)) map.removeLayer(HISTORY_POINT_LAYER);
             if (map.getLayer(HISTORY_LINE_LAYER)) map.removeLayer(HISTORY_LINE_LAYER);
@@ -539,7 +586,73 @@ export default class HistoryLayer {
         return this.rows.get(String(feat.properties.id));
     }
 
+    private onLiveHover(event: MapLayerMouseEvent): void {
+        if (this.mapStore.draw.mode !== DrawToolMode.STATIC || this.mapStore.radial.mode) return;
+
+        const feat = event.features && event.features[0];
+        if (!feat) return;
+
+        const id = String(feat.properties.id);
+        if (id === this.liveId) return;
+
+        this.liveId = id;
+        void this.showLive(id);
+    }
+
+    private async showLive(id: string): Promise<void> {
+        try {
+            const cot = await this.mapStore.worker.db.get(id);
+            if (this.liveId !== id) return;
+
+            const feat = cot ? cot.as_feature() : undefined;
+
+            if (!feat || feat.geometry.type !== 'Point' || !isAircraftType(feat.properties.type)) {
+                this.liveShown = false;
+                if (this.livePopup) this.livePopup.remove();
+                return;
+            }
+
+            if (!this.livePopup) {
+                this.livePopup = new mapgl.Popup({
+                    closeButton: false,
+                    closeOnClick: false,
+                    className: HISTORY_POPUP_CLASS,
+                    maxWidth: '300px',
+                });
+            }
+
+            // The aircraft sits on the end of its own trail: one box, not two
+            this.liveShown = true;
+            if (this.popup) this.popup.remove();
+
+            const type = feat.properties.type;
+            this.livePopup
+                .setHTML(aircraftPopup(feat, this.typeNames.get(type)))
+                .setLngLat(feat.geometry.coordinates.slice(0, 2) as [number, number])
+                .addTo(this.mapStore.map);
+
+            if (!this.typeNames.has(type)) {
+                const resolved = await COT.resolveType(type);
+                this.typeNames.set(type, resolved.name);
+
+                if (this.liveId === id && this.livePopup.isOpen()) {
+                    this.livePopup.setHTML(aircraftPopup(feat, resolved.name));
+                }
+            }
+        } catch (err) {
+            console.warn('Aircraft popup failed', err);
+        }
+    }
+
+    private onLiveLeave(): void {
+        this.liveId = null;
+        this.liveShown = false;
+        if (this.livePopup) this.livePopup.remove();
+    }
+
     private onHover(event: MapLayerMouseEvent): void {
+        if (this.liveShown) return;
+
         const row = this.rowAt(event);
         if (!row || row.geometry.type !== 'Point') return;
 

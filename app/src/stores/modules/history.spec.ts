@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FeatureHistorySource, type DBBreadcrumb, type DBFeatureHistory } from '../../database.ts';
-import { historyCollection, historyPointFeature, defaultPopup, HISTORY_DEFAULT_COLOR } from './history.ts';
+import { historyCollection, historyPointFeature, defaultPopup, aircraftPopup, isAircraftType, HISTORY_DEFAULT_COLOR } from './history.ts';
 
 function row(uid: string, time: string, coordinates: number[], props: Record<string, unknown> = {}): DBFeatureHistory {
     return {
@@ -87,6 +87,34 @@ describe('historyPointFeature', () => {
             remarks: 'then',
         });
         expect(feature.geometry).toEqual({ type: 'Point', coordinates: [1, 1] });
+    });
+});
+
+describe('altitude and aircraft popups', () => {
+    it('shows altitude in feet and leaves an unknown altitude out', () => {
+        expect(defaultPopup(row('alpha', '2026-10-26T10:00:00.000Z', [1, 1, 1000]))).toContain('Alt: 3,281 ft');
+        expect(defaultPopup(row('alpha', '2026-10-26T10:00:00.000Z', [1, 1, 9999999]))).not.toContain('Alt:');
+        expect(defaultPopup(row('alpha', '2026-10-26T10:00:00.000Z', [1, 1]))).not.toContain('Alt:');
+    });
+
+    it('only treats air tracks as aircraft', () => {
+        for (const type of ['a-n-A-C-F', 'a-f-A-M-H-Q', 'a-n-A-C-F-q', 'a-u-A']) expect(isAircraftType(type)).toBe(true);
+        for (const type of ['a-f-G-U-C', 'a-f-G-E-V-A', 'u-d-f', 'b-m-p-s-m', undefined]) expect(isAircraftType(type)).toBe(false);
+    });
+
+    it('adds escaped remarks to the aircraft popup', () => {
+        const feat = {
+            id: 'ADSB-A',
+            type: 'Feature',
+            properties: { callsign: 'N1', type: 'a-n-A-C-F', time: '2026-10-26T10:00:00.000Z', speed: 50, course: 90, remarks: 'A & B <x>' },
+            geometry: { type: 'Point', coordinates: [1, 1, 1000] },
+        } as never;
+
+        const html = aircraftPopup(feat, 'Civil Fixed Wing');
+        expect(html).toContain('N1');
+        expect(html).toContain('Civil Fixed Wing');
+        expect(html).toContain('Alt: 3,281 ft');
+        expect(html).toContain('A &amp; B &lt;x&gt;');
     });
 });
 
