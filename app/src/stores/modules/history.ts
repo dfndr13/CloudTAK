@@ -267,7 +267,6 @@ export default class HistoryLayer {
                     'line-color': ['string', ['get', 'color'], HISTORY_DEFAULT_COLOR],
                     'line-width': 2,
                     'line-opacity': 0.9,
-                    'line-dasharray': [2, 2],
                 },
             });
         }
@@ -278,12 +277,12 @@ export default class HistoryLayer {
                 type: 'circle',
                 source: HISTORY_SOURCE,
                 filter: ['==', ['geometry-type'], 'Point'],
+                // Not drawn, the trail is the solid line; still the hover & click target for each report
                 paint: {
-                    'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 14, 5],
+                    'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 14, 8],
                     'circle-color': ['string', ['get', 'color'], HISTORY_DEFAULT_COLOR],
-                    'circle-opacity': 0.9,
-                    'circle-stroke-width': 1,
-                    'circle-stroke-color': '#ffffff',
+                    'circle-opacity': 0,
+                    'circle-stroke-width': 0,
                 },
             });
         }

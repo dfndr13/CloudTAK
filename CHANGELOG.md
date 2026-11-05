@@ -27,6 +27,8 @@
 
 ### Pending Release
 
+- :rocket: Draw breadcrumb trails as a solid line with no visible point markers; hovering or clicking along the trail still shows each report
+- :rocket: Add a 30 Minutes window to Load History on a feature breadcrumb
 - :bug: Stop frozen CoTs remaining after a channel is turned off by updating TAK before clearing the map
 - :rocket: Add a "2 Minutes" Remove Stale Elements option and make it the default
 - :bug: Fix "Watch"/"Share" video actions reporting a live stream as offline when `media::playback_url` is configured - `VideoServiceControl` now recognizes stream URLs hosted on either `media::public_url` or `media::playback_url` as CloudTAK's own, instead of only matching `media::public_url` and falling through to (and failing) a redundant proxy-lease creation

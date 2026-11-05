@@ -44,7 +44,7 @@
             <div class='px-3 pb-2'>
                 <TablerEnum
                     v-model='query.relative'
-                    :options='["1 Hour", "4 Hours", "8 Hours", "24 Hours"]'
+                    :options='["30 Minutes", "1 Hour", "4 Hours", "8 Hours", "24 Hours"]'
                 />
             </div>
 
@@ -121,6 +121,11 @@ async function onLiveToggle(enabled: boolean): Promise<void> {
     emit('live', enabled);
 }
 
+function windowSeconds(relative: string): number {
+    const [amount, unit] = relative.split(' ');
+    return Number(amount) * (unit.startsWith('Minute') ? 60 : 60 * 60);
+}
+
 async function loadBreadcrumb() {
     loading.value = true;
     loaded.value = null;
@@ -133,7 +138,7 @@ async function loadBreadcrumb() {
                     ':uid': props.uid
                 },
                 query: {
-                    secago: String(60 * 60 * Number(query.value.relative.split(' ')[0])),
+                    secago: String(windowSeconds(query.value.relative)),
                     track: false
                 }
             }
