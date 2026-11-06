@@ -68,7 +68,10 @@ export function rankGroups(
 
             if (placeHint) {
                 const place = places[group.placeId] ?? "";
-                if (!place.toUpperCase().startsWith(placeHint.toUpperCase())) continue;
+                const hint = placeHint.toUpperCase();
+                const name = place.toUpperCase();
+                // Second test: the hint carries more than the town ("Salina Ks 67401", "Salina Usa").
+                if (!name.startsWith(hint) && !(name && hint.startsWith(`${name} `))) continue;
             }
             if (postcodeHint) {
                 const postcode = places[group.postcodeId] ?? "";

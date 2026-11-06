@@ -201,7 +201,25 @@ import type { Component } from 'vue';
 
 type SuggestItem = SearchSuggest['items'][number];
 type SearchType = NonNullable<SuggestItem['type']>;
-type OptionKind = 'coordinate' | 'feature' | 'overlay' | 'place';
+type OptionKind = 'coordinate' | 'feature' | 'overlay' | 'pack' | 'place';
+
+// Result shape published by the address-search plugin (window['addresssearch:api']). Plugins are
+// optional and core never imports them, so the contract is declared here and read at call time.
+type PackResult = {
+    displayAddress: string;
+    lat: number;
+    lon: number;
+    city?: string;
+    postcode?: string;
+    sourceKind?: 'address' | 'gazetteer';
+    featureClass?: string;
+    county?: string;
+    state?: string;
+};
+
+type PackSearchApi = {
+    search(query: string, opts: { limit: number, reference: { lat: number, lon: number } }): Promise<Array<PackResult>>;
+};
 
 type Option = {
     index: number;
@@ -214,6 +232,7 @@ type Option = {
     overlay?: DBOverlay;
     coordinates?: [number, number];
     item?: SuggestItem;
+    pack?: PackResult;
 };
 
 const typeIcons: Record<SearchType, Component> = {
@@ -250,6 +269,7 @@ const groupLabels: Record<OptionKind, string> = {
     coordinate: 'Coordinates',
     feature: 'Map Features',
     overlay: 'Overlays',
+    pack: 'Addresses & Places',
     place: 'Places'
 };
 
@@ -270,6 +290,14 @@ function overlayDetail(overlay: DBOverlay): string {
 
 function typeIcon(type?: SearchType): Component {
     return (type && typeIcons[type]) || IconMapPin;
+}
+
+function packDetail(pack: PackResult): string {
+    const parts = pack.sourceKind === 'gazetteer'
+        ? [pack.featureClass, pack.county, pack.state]
+        : [pack.city, pack.postcode];
+
+    return parts.filter(Boolean).join(' · ');
 }
 
 const props = defineProps({
@@ -327,6 +355,7 @@ const coordinate = ref<[number, number] | null>(null);
 const cots = ref<Array<{ cot: COT, detail?: string }>>([]);
 const overlayMatches = ref<Array<DBOverlay>>([]);
 const places = ref<Array<SuggestItem>>([]);
+const packs = ref<Array<PackResult>>([]);
 
 const options = computed<Array<Option>>(() => {
     const list: Array<Option> = [];
@@ -368,6 +397,18 @@ const options = computed<Array<Option>>(() => {
         });
     }
 
+    for (const pack of packs.value) {
+        list.push({
+            index: list.length,
+            id: `pack-${pack.lon},${pack.lat},${pack.displayAddress}`,
+            kind: 'pack',
+            label: pack.displayAddress,
+            detail: packDetail(pack),
+            icon: pack.sourceKind === 'gazetteer' ? IconMapPinStar : IconHome,
+            pack
+        });
+    }
+
     for (const item of places.value) {
         list.push({
             index: list.length,
@@ -384,7 +425,7 @@ const options = computed<Array<Option>>(() => {
 });
 
 const groups = computed(() => {
-    return (['coordinate', 'feature', 'overlay', 'place'] as const)
+    return (['coordinate', 'feature', 'overlay', 'pack', 'place'] as const)
         .map((kind) => ({
             kind,
             label: groupLabels[kind],
@@ -495,6 +536,41 @@ async function searchFeatures(needle: string): Promise<Array<{ cot: COT, detail?
     });
 }
 
+// A failure here must not hide pack results: offline, the packs are the only address source.
+async function suggestPlaces(text: string, lng: number, lat: number): Promise<Array<SuggestItem>> {
+    try {
+        const { data, error } = await server.GET('/api/search/suggest', {
+            params: {
+                query: {
+                    query: text,
+                    limit: 5,
+                    longitude: lng,
+                    latitude: lat
+                }
+            }
+        });
+
+        if (error) throw new Error(error.message);
+
+        return data?.items || [];
+    } catch (err) {
+        console.error('Search provider failed:', err);
+        return [];
+    }
+}
+
+async function searchPacks(text: string, lng: number, lat: number): Promise<Array<PackResult>> {
+    const api = (window as unknown as Record<string, PackSearchApi | undefined>)['addresssearch:api'];
+    if (!api) return [];
+
+    try {
+        return await api.search(text, { limit: 5, reference: { lat, lon: lng } });
+    } catch (err) {
+        console.error('Address pack search failed:', err);
+        return [];
+    }
+}
+
 async function search(value: string): Promise<void> {
     const current = ++sequence;
     const text = value.trim();
@@ -505,6 +581,7 @@ async function search(value: string): Promise<void> {
         cots.value = [];
         overlayMatches.value = [];
         places.value = [];
+        packs.value = [];
         loading.value = false;
         return;
     }
@@ -514,36 +591,28 @@ async function search(value: string): Promise<void> {
     try {
         const center = mapStore.map.getCenter();
 
-        const [features, matchedOverlays, suggest] = await Promise.all([
+        const [features, matchedOverlays, suggested, packMatches] = await Promise.all([
             searchFeatures(text.toLowerCase()),
             props.overlays
                 ? OverlayManager.list({ filter: text, localFirst: true, limit: 5 })
                 : Promise.resolve([]),
-            server.GET('/api/search/suggest', {
-                params: {
-                    query: {
-                        query: text,
-                        limit: 5,
-                        longitude: center.lng,
-                        latitude: center.lat
-                    }
-                }
-            })
+            suggestPlaces(text, center.lng, center.lat),
+            searchPacks(text, center.lng, center.lat)
         ]);
 
         if (current !== sequence) return;
 
-        if (suggest.error) throw new Error(suggest.error.message);
-
         cots.value = features;
         overlayMatches.value = matchedOverlays;
-        places.value = suggest.data?.items || [];
+        places.value = suggested;
+        packs.value = packMatches;
     } catch (err) {
         if (current !== sequence) return;
         console.error('Search failed:', err);
         cots.value = [];
         overlayMatches.value = [];
         places.value = [];
+        packs.value = [];
     } finally {
         if (current === sequence) loading.value = false;
     }
@@ -629,6 +698,8 @@ async function select(option: Option, opts: { fly?: boolean } = {}): Promise<voi
         await selectFeature(option.cot, opts.fly === true);
     } else if (option.kind === 'overlay' && option.overlay) {
         await selectOverlay(option.overlay);
+    } else if (option.kind === 'pack' && option.pack) {
+        await selectPack(option.pack);
     } else if (option.kind === 'place' && option.item) {
         await selectPlace(option.item);
     }
@@ -668,6 +739,19 @@ async function selectOverlay(overlay: DBOverlay): Promise<void> {
     }
 
     emit('close');
+}
+
+async function selectPack(pack: PackResult): Promise<void> {
+    const coordinates: [number, number] = [pack.lon, pack.lat];
+
+    mapStore.map.flyTo({
+        center: coordinates,
+        zoom: 17
+    });
+
+    await addMarker(pack.displayAddress.split(',')[0].trim(), coordinates);
+
+    applySelection(pack.displayAddress, coordinates);
 }
 
 async function selectPlace(item: SuggestItem): Promise<void> {

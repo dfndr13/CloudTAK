@@ -357,6 +357,98 @@ describe('CloudTAK/util/SearchBox', () => {
         expect(wrapper.emitted('close')).toHaveLength(1);
     });
 
+    describe('address packs', () => {
+        const packSearch = vi.fn();
+        const key = 'addresssearch:api';
+        const windowKeys = window as unknown as Record<string, unknown>;
+
+        const address = {
+            displayAddress: '123 Elm St, Testville',
+            lat: 38.5,
+            lon: -97.5,
+            city: 'Testville',
+            postcode: '67000',
+            sourceKind: 'address'
+        };
+
+        beforeEach(() => {
+            packSearch.mockReset();
+            windowKeys[key] = { search: packSearch };
+        });
+
+        afterEach(() => {
+            delete windowKeys[key];
+        });
+
+        it('lists pack addresses using the map center as the reference', async () => {
+            packSearch.mockResolvedValue([address]);
+
+            const wrapper = await search([], '123 Elm');
+
+            expect(packSearch).toHaveBeenCalledWith('123 Elm', { limit: 5, reference: { lat: 39.7, lon: -105 } });
+            expect(labels(wrapper)).toEqual(['123 Elm St, Testville']);
+            expect(wrapper.find('[role="option"] .text-secondary').text()).toBe('Testville · 67000');
+        });
+
+        it('describes a place-name hit by class, county and state', async () => {
+            packSearch.mockResolvedValue([{
+                displayAddress: 'Test Creek',
+                lat: 38,
+                lon: -98,
+                sourceKind: 'gazetteer',
+                featureClass: 'Stream',
+                county: 'Test',
+                state: 'KS'
+            }]);
+
+            const wrapper = await search([], 'Test Creek');
+
+            expect(wrapper.find('[role="option"] .text-secondary').text()).toBe('Stream · Test · KS');
+        });
+
+        it('flies to a selected address and adds a marker with no server call', async () => {
+            packSearch.mockResolvedValue([address]);
+
+            const wrapper = await search([], '123 Elm');
+            GET.mockClear();
+
+            await wrapper.find('input').trigger('keydown', { key: 'Enter' });
+            await flushPromises();
+
+            expect(GET).not.toHaveBeenCalled();
+            expect(flyTo).toHaveBeenCalledWith({ center: [-97.5, 38.5], zoom: 17 });
+            expect(dbAdd.mock.calls[0][0].properties.callsign).toBe('123 Elm St');
+            expect(wrapper.emitted('select')).toEqual([[{
+                name: '123 Elm St, Testville',
+                coordinates: [-97.5, 38.5]
+            }]]);
+        });
+
+        it('still lists pack addresses when the server cannot be reached', async () => {
+            packSearch.mockResolvedValue([address]);
+            GET.mockRejectedValue(new Error('offline'));
+            const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+            const wrapper = mount(SearchBox);
+            await wrapper.find('input').setValue('123 Elm');
+            await vi.advanceTimersByTimeAsync(250);
+            await flushPromises();
+
+            expect(labels(wrapper)).toEqual(['123 Elm St, Testville']);
+            consoleError.mockRestore();
+        });
+
+        it('still lists provider results when the pack search fails', async () => {
+            packSearch.mockRejectedValue(new Error('worker terminated'));
+            const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+            const wrapper = await search([{ text: 'Denver, CO', magicKey: 'a', isCollection: false }]);
+
+            expect(labels(wrapper)).toEqual(['Denver, CO']);
+            consoleError.mockRestore();
+        });
+    });
+
     it('renders the panel variant with an empty state and keyboard hints', async () => {
         const wrapper = mount(SearchBox, { props: { variant: 'panel' } });
 

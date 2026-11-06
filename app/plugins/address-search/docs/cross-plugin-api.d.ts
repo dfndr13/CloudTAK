@@ -74,7 +74,7 @@ export interface AddressSearchManifest {
  */
 export interface AddressSearchApi {
     /** Full-text address search, same pipeline the plugin's own search bar uses. */
-    search(query: string, opts?: { limit?: number }): Promise<AddressSearchResult[]>;
+    search(query: string, opts?: { limit?: number; reference?: { lat: number; lon: number } }): Promise<AddressSearchResult[]>;
     /** Convenience wrapper over `search()` returning just the single best match, if any. */
     geocode(addressString: string): Promise<AddressSearchResult | undefined>;
 }

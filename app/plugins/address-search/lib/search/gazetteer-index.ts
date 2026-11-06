@@ -151,7 +151,8 @@ export class GazetteerIndex {
     }
 
     async search(rawQuery: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
-        const query = normalizeGazetteerNameForMatch(rawQuery);
+        // Text after a comma is a state or county ("Salina, KS"), not part of the feature's name.
+        const query = normalizeGazetteerNameForMatch(rawQuery.split(",")[0]!);
         if (!query) return [];
 
         const candidates = this.matchCandidates(query);

@@ -9,7 +9,7 @@ import { decodeStringTable } from "../pack/strings.ts";
 import { decodeGroups } from "../pack/groups.ts";
 import { decodeTrigramPostings } from "../pack/trigrams.ts";
 import { decodeCellDir } from "../pack/cells.ts";
-import { parseQuery } from "./query-parse.ts";
+import { directionVariants, parseQuery, placeSplits } from "./query-parse.ts";
 import { prefixRange, streetIdsInRange } from "./prefix-search.ts";
 import { trigramCandidateStreetIds, verifyFuzzyCandidates, MIN_FUZZY_QUERY_LENGTH } from "./fuzzy-search.ts";
 import { rankGroups, type StreetMatch } from "./ranker.ts";
@@ -25,7 +25,7 @@ import {
     type DecodedCellDir,
 } from "./reverse-lookup.ts";
 import type { PackSource } from "../pack/pack-source.ts";
-import type { GeoPoint, SearchOptions, SearchResult, NumberMatchKind } from "./types.ts";
+import type { GeoPoint, ParsedQuery, SearchOptions, SearchResult, NumberMatchKind } from "./types.ts";
 import type { DecodedGroup, PackManifest, TrigramPostings } from "../pack/types.ts";
 
 /** Below this many prefix-path candidates, engage the fuzzy path too (PLAN.md §4.1 step 3). */
@@ -112,6 +112,38 @@ export class SearchIndex {
 
     async search(rawQuery: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
         const parsed = parseQuery(rawQuery);
+
+        const readings = [parsed, ...placeSplits(parsed)];
+
+        for (const reading of readings) {
+            const results = await this.searchParsed(reading, opts);
+            if (results.length > 0) return results;
+        }
+
+        for (const reading of readings) {
+            const results = await this.searchWithDirections(reading, opts);
+            if (results.length > 0) return results;
+        }
+        return [];
+    }
+
+    /**
+     * Every direction of the street at once, since "10th St, Salina" may mean N or S 10th St. Fuzzy
+     * hits are dropped: with a guessed direction, they'd offer "W 11th St" for a town with no W 10th St.
+     */
+    private async searchWithDirections(reading: ParsedQuery, opts: SearchOptions): Promise<SearchResult[]> {
+        const results: SearchResult[] = [];
+        for (const variant of directionVariants(reading)) {
+            const found = await this.searchParsed(variant, opts);
+            results.push(...found.filter((result) => result.matchedVia !== "fuzzy"));
+        }
+
+        results.sort((a, b) => b.score - a.score
+            || (a.distanceMeters ?? Number.POSITIVE_INFINITY) - (b.distanceMeters ?? Number.POSITIVE_INFINITY));
+        return results.slice(0, opts.limit ?? DEFAULT_LIMIT);
+    }
+
+    private async searchParsed(parsed: ParsedQuery, opts: SearchOptions): Promise<SearchResult[]> {
         if (!parsed.streetQuery) return [];
 
         const streetMatches = this.matchStreets(parsed.streetQuery);

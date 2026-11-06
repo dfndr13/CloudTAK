@@ -31,3 +31,39 @@ export function parseQuery(raw: string): ParsedQuery {
 
     return { number, streetQuery, placeHint, postcodeHint };
 }
+
+/** How many trailing words of a comma-less query may be a town and state ("Fort Riley Ks"). */
+const MAX_TRAILING_PLACE_TOKENS = 3;
+
+/**
+ * Other readings of a comma-less query, for when it matched nothing as written: "N 10th St Salina Ks"
+ * read as street "N 10TH ST" in "Salina Ks". Fewest place words first; empty if the query had a comma.
+ */
+export function placeSplits(parsed: ParsedQuery): ParsedQuery[] {
+    if (parsed.placeHint) return [];
+
+    const tokens = parsed.streetQuery.split(" ").filter(Boolean);
+    const splits: ParsedQuery[] = [];
+    for (let count = 1; count <= MAX_TRAILING_PLACE_TOKENS && count < tokens.length; count++) {
+        splits.push({
+            ...parsed,
+            streetQuery: tokens.slice(0, -count).join(" "),
+            placeHint: normalizePlace(tokens.slice(-count).join(" ")),
+        });
+    }
+    return splits;
+}
+
+/** The canonical forms `canonicalizeStreetTokens` gives street directions. */
+const STREET_DIRECTIONS = ["N", "S", "E", "W", "NE", "NW", "SE", "SW"];
+
+/**
+ * The query with each street direction in front, for when it matched nothing without one: streets
+ * are stored as "N 10TH ST", which a search for "10TH ST" can't reach. Empty if it already has one.
+ */
+export function directionVariants(parsed: ParsedQuery): ParsedQuery[] {
+    const first = parsed.streetQuery.split(" ")[0]!;
+    if (!first || STREET_DIRECTIONS.includes(first)) return [];
+
+    return STREET_DIRECTIONS.map((direction) => ({ ...parsed, streetQuery: `${direction} ${parsed.streetQuery}` }));
+}
