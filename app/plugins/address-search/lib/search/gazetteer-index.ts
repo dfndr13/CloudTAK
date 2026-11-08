@@ -151,7 +151,7 @@ export class GazetteerIndex {
     }
 
     async search(rawQuery: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
-        // Text after a comma is a state or county ("Salina, KS"), not part of the feature's name.
+        // Text after a comma is a state or county ("Springfield, ST"), not part of the feature's name.
         const query = normalizeGazetteerNameForMatch(rawQuery.split(",")[0]!);
         if (!query) return [];
 

@@ -14,6 +14,9 @@ byte-level spec of the `.pack` file this CLI produces.
   A copy loaded by hand from exactly a listed pack's URL is replaced by the managed copy.
 - "Updating …" status line in the search bar while a managed download runs.
 - CLI `pack-list` command: writes `packs.json` (id, label, url, SHA-256 version, size).
+- `cli/tools/extract_landmarks.py`: builds a landmarks pack input for one US state from
+  OpenStreetMap, with README steps.
+- README: "About this fork" and "Licence and data credit" sections.
 
 ### Changed
 - Manual loading (file picker, URL field, remove buttons, online-fallback API keys) is shown only to
@@ -23,9 +26,14 @@ byte-level spec of the `.pack` file this CLI produces.
   each browser's own `db.kv`, so it was never shared, and the pack list replaces it.
 - README setup steps 4 and 5 describe the pack list. The volume path is updated for CloudTAK v13.110
   and later (`/home/etl/app/dist`).
+- A query with no comma also tries its trailing words as the town and state.
+- A street typed without its direction tries every direction and lists the matches together. Fuzzy
+  hits are left out of that list, so a guessed direction can't offer the wrong street.
 
 ### Fixed
 - A load that fails part-way no longer leaves its already-downloaded sections behind in IndexedDB.
+- Place-name search ignores text after a comma (a state or county), which isn't part of the name.
+- The cross-plugin API types now document the existing `reference` search option.
 
 ## Status
 

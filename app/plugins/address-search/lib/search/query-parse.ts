@@ -32,12 +32,12 @@ export function parseQuery(raw: string): ParsedQuery {
     return { number, streetQuery, placeHint, postcodeHint };
 }
 
-/** How many trailing words of a comma-less query may be a town and state ("Fort Riley Ks"). */
+/** How many trailing words of a comma-less query may be a town and state ("Oak Grove St"). */
 const MAX_TRAILING_PLACE_TOKENS = 3;
 
 /**
- * Other readings of a comma-less query, for when it matched nothing as written: "N 10th St Salina Ks"
- * read as street "N 10TH ST" in "Salina Ks". Fewest place words first; empty if the query had a comma.
+ * Other readings of a comma-less query, for when it matched nothing as written: "N 10th St Springfield St"
+ * read as street "N 10TH ST" in "Springfield St". Fewest place words first; empty if the query had a comma.
  */
 export function placeSplits(parsed: ParsedQuery): ParsedQuery[] {
     if (parsed.placeHint) return [];

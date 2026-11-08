@@ -13,6 +13,39 @@ All 7 phases of the original plan, plus geoname search (Phases 7-8), are built a
 see [Development history](#development-history) for what was checked at each phase. This section is
 the actual "how do I get this running" guide.
 
+## About this fork
+
+This is a fork of the original location-search plugin (GitHub links to it at the top of this page).
+It is for a CloudTAK server whose users should get the search data without loading anything
+themselves. What is different here:
+
+- **The server manages the data.** Browsers install, update and remove packs to match a
+  `packs.json` list on the server (steps 4 and 5 below). Loading packs by hand is limited to CloudTAK
+  system admins.
+- **Searches work the way people type them.** With no comma, the trailing words are also tried as
+  the town and state. A street typed without its direction (`10th St`) tries every direction and
+  lists the matches together.
+- **Landmarks.** A script turns OpenStreetMap data into a pack of schools, hospitals, fire stations
+  and similar places ([instructions below](#optional-landmarks-from-openstreetmap)).
+
+**Do not install this plugin from the TAK Portal marketplace.** The marketplace installs the
+original plugin and replaces this code.
+
+**Installing.** On CloudTAK v13.110 and later, plugins live in `app/plugins/`, not the
+`api/web/plugins/` shown in step 3. There are two ways to build this fork in:
+
+- Copy it to `app/plugins/address-search` (leave out `cli/`, `test/`, `bench/` and `node_modules/`)
+  and rebuild the `api` image. This is how we run it, on CloudTAK v13.118.0.
+  [Our CloudTAK fork](https://github.com/dfndr13/CloudTAK#fork-notes-offline-address-search) lists
+  the other changes that needs.
+- Add this repo's URL to `WEB_PLUGINS`, as in step 3. We have not tested this route.
+
+The results in CloudTAK's **main search box** need a change to CloudTAK itself, which is in that
+CloudTAK fork. On stock CloudTAK, results appear only in this plugin's own search bar.
+
+**Known limits.** A house number that doesn't exist returns the nearest one, with nothing to say it
+isn't exact. A misspelled street typed without its direction finds nothing.
+
 ## Setup, step by step
 
 There are four things to do, in order: get address data, turn it into a `.pack` file, install the
@@ -95,6 +128,42 @@ node src/index.ts build-gazetteer /path/to/DomesticNames_AZ.txt \
 For reference, a real Arizona statewide GNIS export (29,777 raw rows) took under a second to build
 and produced a 2.57 MB `.pack` file covering 26,705 places.
 
+### Optional: landmarks, from OpenStreetMap
+
+The USGS file above has no schools or buildings in the state we built, so a search for a university
+or hospital finds nothing. `cli/tools/extract_landmarks.py` fills that gap from
+[OpenStreetMap](https://www.openstreetmap.org): universities, schools, hospitals, fire, police and
+EMS stations, courthouses, churches, cemeteries, parks, gas stations, lodging, airports and more
+(the `CLASSES` table at the top of the script). Run these from the root of this repo:
+
+```sh
+curl -LO https://download.geofabrik.de/north-america/us/arizona-latest.osm.pbf
+
+docker run --rm -v "$PWD:/work" -w /work python:3.12-slim sh -c '
+  apt-get update -qq && apt-get install -y -qq libexpat1 > /dev/null
+  pip install -q osmium shapely
+  python cli/tools/extract_landmarks.py Arizona arizona-latest.osm.pbf landmarks.txt'
+
+cd cli
+npm install
+node src/index.ts build-gazetteer ../landmarks.txt \
+  --out az-landmarks.pack \
+  --region "AZ" \
+  --source-name "OpenStreetMap contributors (ODbL), AZ landmarks" \
+  --classes all
+```
+
+`--classes all` is required: the script's class names, such as Fire Station, aren't in the default
+list. Then host the pack as in step 4 and re-run `pack-list` with all your packs.
+
+Limits:
+
+- It handles one US state at a time. It finds the state and counties from OpenStreetMap's boundaries.
+- Search matches names only. `Hospital` finds places with "Hospital" in the name, not every
+  hospital, and abbreviations and alternate names are not included.
+- OpenStreetMap is mapped by volunteers, so coverage varies from place to place. Check it for your
+  area before relying on it.
+
 ### 3. Install the plugin into CloudTAK
 
 **Local dev** (symlink — instant reload, never appears in CloudTAK's git status since `plugins/`
@@ -171,7 +240,7 @@ security boundary (a manual load only ever affects the user's own browser).
 
 Address data lives entirely in **the browser's own IndexedDB**, not on any CloudTAK server —
 that's what makes search instant and fully offline once loaded, and it's why "host the `.pack`
-file" (step 4) and "each user loads it once" (step 5) are both necessary: there is no
+file" (step 4) and "each browser downloads its own copy" (step 5) are both necessary: there is no
 server-side sync of this data between users, by design (see `docs/PLAN.md` §5 for the full
 reasoning — mainly avoiding a memory footprint large enough for iOS Safari to evict the tab).
 
@@ -249,6 +318,23 @@ worth revisiting if a much larger or lower-memory build environment comes up lat
 The optional online-fallback geocode provider (Geoapify/LocationIQ/Radar/HERE, meant to fire only
 on an explicit "search online" action after a local miss). The gear panel's API-key storage exists,
 but nothing calls out to a provider yet.
+
+## Licence and data credit
+
+**Code:** AGPL-3.0, see [`LICENSE`](LICENSE). If you run a modified copy on a server other people
+use, the AGPL requires you to offer those users the source of your version. Publishing your fork
+and linking to it is the usual way to do that.
+
+**Data** is not covered by the code licence:
+
+- **OpenStreetMap** data is under the [ODbL](https://www.openstreetmap.org/copyright). Credit
+  "© OpenStreetMap contributors" wherever people use it. A pack built from it is probably a
+  derivative database, so if you give a pack to others the ODbL may also require you to share it
+  under the same licence. The script is in this repo so anyone can rebuild the pack from the source.
+- **USGS GNIS** is US government data, in the public domain.
+- **OpenAddresses** licences vary by source. Check the terms for each source you use.
+
+This is general information, not legal advice.
 
 ## Development history
 

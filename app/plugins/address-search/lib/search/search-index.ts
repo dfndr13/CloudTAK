@@ -128,7 +128,7 @@ export class SearchIndex {
     }
 
     /**
-     * Every direction of the street at once, since "10th St, Salina" may mean N or S 10th St. Fuzzy
+     * Every direction of the street at once, since "10th St, Springfield" may mean N or S 10th St. Fuzzy
      * hits are dropped: with a guessed direction, they'd offer "W 11th St" for a town with no W 10th St.
      */
     private async searchWithDirections(reading: ParsedQuery, opts: SearchOptions): Promise<SearchResult[]> {
