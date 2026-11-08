@@ -806,7 +806,7 @@ export interface paths {
                     /** @description No Description */
                     type?: ("raster" | "raster-dem" | "vector") | ("raster" | "raster-dem" | "vector")[];
                     /** @description No Description */
-                    sort: "id" | "created" | "updated" | "parent" | "name" | "url" | "protocol" | "bounds" | "center" | "minzoom" | "maxzoom" | "format" | "type" | "username" | "sharing_enabled" | "sharing_token" | "hidden" | "tilesize" | "attribution" | "collection" | "frequency" | "scheme" | "overlay" | "tilejson" | "enableRLS";
+                    sort: "id" | "created" | "updated" | "parent" | "name" | "url" | "protocol" | "bounds" | "center" | "minzoom" | "maxzoom" | "format" | "type" | "username" | "sharing_enabled" | "sharing_token" | "hidden" | "tilesize" | "attribution" | "collection" | "frequency" | "scheme" | "overlay" | "tilejson" | "args" | "enableRLS";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                     /** @description Only show Basemaps belonging to a given collection */
@@ -861,6 +861,10 @@ export interface paths {
                                 overlay: boolean;
                                 /** @description Upstream TileJSON URL used to resolve metadata for hosted basemaps */
                                 tilejson?: null | string;
+                                /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                                args: {
+                                    [key: string]: string | string[];
+                                };
                                 encoding?: "mapbox" | "terrarium";
                                 styles?: unknown[];
                                 iconset?: null | string;
@@ -1018,6 +1022,12 @@ export interface paths {
                                 maxzoom?: number;
                                 description?: string;
                             }[];
+                            /** @description Raster legend entries - a CloudTAK extension to TileJSON */
+                            legend?: {
+                                label: string;
+                                /** @description CSS color of the legend swatch */
+                                color: string;
+                            }[];
                         };
                     };
                 };
@@ -1150,6 +1160,10 @@ export interface paths {
                         title?: string;
                         iconset?: null | string;
                         tilejson?: string;
+                        /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                        args?: {
+                            [key: string]: string | string[];
+                        };
                     };
                 };
             };
@@ -1186,6 +1200,10 @@ export interface paths {
                             overlay: boolean;
                             /** @description Upstream TileJSON URL used to resolve metadata for hosted basemaps */
                             tilejson?: null | string;
+                            /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                            args: {
+                                [key: string]: string | string[];
+                            };
                             encoding?: "mapbox" | "terrarium";
                             styles?: unknown[];
                             iconset?: null | string;
@@ -1337,6 +1355,10 @@ export interface paths {
                             overlay: boolean;
                             /** @description Upstream TileJSON URL used to resolve metadata for hosted basemaps */
                             tilejson?: null | string;
+                            /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                            args: {
+                                [key: string]: string | string[];
+                            };
                             encoding?: "mapbox" | "terrarium";
                             styles?: unknown[];
                             iconset?: null | string;
@@ -1375,6 +1397,10 @@ export interface paths {
                                 overlay: boolean;
                                 /** @description Upstream TileJSON URL used to resolve metadata for hosted basemaps */
                                 tilejson?: null | string;
+                                /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                                args: {
+                                    [key: string]: string | string[];
+                                };
                                 encoding?: "mapbox" | "terrarium";
                                 styles?: unknown[];
                                 iconset?: null | string;
@@ -1614,6 +1640,10 @@ export interface paths {
                         title?: string;
                         iconset?: null | string;
                         tilejson?: string;
+                        /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                        args?: {
+                            [key: string]: string | string[];
+                        };
                     };
                 };
             };
@@ -1650,6 +1680,10 @@ export interface paths {
                             overlay: boolean;
                             /** @description Upstream TileJSON URL used to resolve metadata for hosted basemaps */
                             tilejson?: null | string;
+                            /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                            args: {
+                                [key: string]: string | string[];
+                            };
                             encoding?: "mapbox" | "terrarium";
                             styles?: unknown[];
                             iconset?: null | string;
@@ -1799,6 +1833,12 @@ export interface paths {
                                 minzoom?: number;
                                 maxzoom?: number;
                                 description?: string;
+                            }[];
+                            /** @description Raster legend entries - a CloudTAK extension to TileJSON */
+                            legend?: {
+                                label: string;
+                                /** @description CSS color of the legend swatch */
+                                color: string;
                             }[];
                             actions: {
                                 feature: ("query" | "fetch" | "create" | "update" | "delete")[];
@@ -12736,9 +12776,21 @@ export interface paths {
                          * @default 120
                          */
                         timeout: number;
-                        alarm_period?: number;
-                        alarm_evals?: number;
-                        alarm_points?: number;
+                        /**
+                         * @description CloudWatch alarm period in seconds
+                         * @default 30
+                         */
+                        alarm_period: number;
+                        /**
+                         * @description Number of periods evaluated by the CloudWatch alarm
+                         * @default 5
+                         */
+                        alarm_evals: number;
+                        /**
+                         * @description Breaching data points required to alarm - must not exceed alarm_evals
+                         * @default 4
+                         */
+                        alarm_points: number;
                         /** @default false */
                         protected: boolean;
                         /**
@@ -15572,8 +15624,11 @@ export interface paths {
                         vpc?: boolean;
                         task?: string;
                         logging?: boolean;
+                        /** @description CloudWatch alarm period in seconds */
                         alarm_period?: number;
+                        /** @description Number of periods evaluated by the CloudWatch alarm */
                         alarm_evals?: number;
+                        /** @description Breaching data points required to alarm - must not exceed alarm_evals */
                         alarm_points?: number;
                         /** @description Permissions granted to the Layer as <permission>:<level> pairs - ie video:read or video:* */
                         permissions?: string[];
@@ -38973,6 +39028,11 @@ export interface paths {
                                 };
                             }[];
                             passwordProtected: boolean;
+                            defaultRole?: {
+                                permissions: string[];
+                                hibernateLazyInitializer?: unknown;
+                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                            };
                             token?: string;
                             groups?: string | string[];
                             missionChanges?: {
@@ -39213,6 +39273,10 @@ export interface paths {
                         keywords?: string[];
                         /** @description Updated set of groups (channels) to assign to the Mission. Caller must be MISSION_OWNER or admin. */
                         groups?: string[];
+                        /** @description Role granted to new subscribers. Caller must have MISSION_SET_ROLE and every permission of the new role. */
+                        defaultRole?: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                        /** @description New password, or null to remove the password. Caller must have MISSION_SET_PASSWORD. */
+                        password?: string | null;
                     };
                 };
             };
@@ -39276,6 +39340,11 @@ export interface paths {
                                 };
                             }[];
                             passwordProtected: boolean;
+                            defaultRole?: {
+                                permissions: string[];
+                                hibernateLazyInitializer?: unknown;
+                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                            };
                             token?: string;
                             groups?: string | string[];
                             missionChanges?: {
@@ -41183,6 +41252,11 @@ export interface paths {
                                     };
                                 }[];
                                 passwordProtected: boolean;
+                                defaultRole?: {
+                                    permissions: string[];
+                                    hibernateLazyInitializer?: unknown;
+                                    type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                                };
                                 token?: string;
                                 groups?: string | string[];
                                 missionChanges?: {
@@ -41407,6 +41481,11 @@ export interface paths {
                                 };
                             }[];
                             passwordProtected: boolean;
+                            defaultRole?: {
+                                permissions: string[];
+                                hibernateLazyInitializer?: unknown;
+                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                            };
                             token?: string;
                             groups?: string | string[];
                             missionChanges?: {
@@ -42905,7 +42984,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove one or more active subscribers from a mission by UID */
+        /** Remove one or more subscribers from a mission by UID - requires MISSION_SET_ROLE */
         delete: {
             parameters: {
                 query: {
@@ -52512,7 +52591,7 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "name" | "active" | "username" | "created" | "updated" | "pos" | "type" | "frequency" | "iconset" | "opacity" | "visible" | "token" | "styles" | "mode" | "mode_id" | "url" | "enableRLS";
+                    sort: "id" | "name" | "active" | "username" | "created" | "updated" | "pos" | "type" | "frequency" | "iconset" | "opacity" | "visible" | "token" | "styles" | "mode" | "mode_id" | "url" | "args" | "enableRLS";
                 };
                 header?: never;
                 path?: never;
@@ -52546,6 +52625,10 @@ export interface paths {
                                 mode: string;
                                 mode_id: string | null;
                                 url: string;
+                                /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                                args: {
+                                    [key: string]: string | string[];
+                                };
                             }[];
                             available: {
                                 terrain: boolean;
@@ -52569,6 +52652,10 @@ export interface paths {
                                 mode: string;
                                 mode_id: string | null;
                                 url: string;
+                                /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                                args: {
+                                    [key: string]: string | string[];
+                                };
                                 actions: {
                                     feature: ("query" | "fetch" | "create" | "update" | "delete")[];
                                 };
@@ -52715,6 +52802,10 @@ export interface paths {
                         mode: string;
                         mode_id?: string;
                         styles?: unknown[];
+                        /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                        args?: {
+                            [key: string]: string | string[];
+                        };
                         token?: string;
                         url: string;
                     };
@@ -52745,6 +52836,10 @@ export interface paths {
                             mode: string;
                             mode_id: string | null;
                             url: string;
+                            /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                            args: {
+                                [key: string]: string | string[];
+                            };
                             actions: {
                                 feature: ("query" | "fetch" | "create" | "update" | "delete")[];
                             };
@@ -53024,6 +53119,10 @@ export interface paths {
                                 mode: string;
                                 mode_id: string | null;
                                 url: string;
+                                /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                                args: {
+                                    [key: string]: string | string[];
+                                };
                             }[];
                         };
                     };
@@ -53146,6 +53245,10 @@ export interface paths {
                             mode: string;
                             mode_id: string | null;
                             url: string;
+                            /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                            args: {
+                                [key: string]: string | string[];
+                            };
                             actions: {
                                 feature: ("query" | "fetch" | "create" | "update" | "delete")[];
                             };
@@ -53292,6 +53395,10 @@ export interface paths {
                         url?: string;
                         mode_id?: string;
                         styles?: unknown[];
+                        /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                        args?: {
+                            [key: string]: string | string[];
+                        };
                     };
                 };
             };
@@ -53320,6 +53427,10 @@ export interface paths {
                             mode: string;
                             mode_id: string | null;
                             url: string;
+                            /** @description Query params the client appends to every tile request. A string is a single value, an array is a repeated param */
+                            args: {
+                                [key: string]: string | string[];
+                            };
                             actions: {
                                 feature: ("query" | "fetch" | "create" | "update" | "delete")[];
                             };
@@ -61578,6 +61689,8 @@ export interface paths {
                             symbolsets: {
                                 id: string;
                                 name: string;
+                                /** @description Number of Symbols in the Symbol Set */
+                                count: number;
                             }[];
                             items: {
                                 sidc: string;

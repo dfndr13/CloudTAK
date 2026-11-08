@@ -4,15 +4,8 @@
             v-if='cot'
             #header
         >
-            <div class='flex-shrink-0'>
-                <FeatureIcon
-                    :key='cot.properties.type'
-                    :size='32'
-                    :feature='cot'
-                />
-            </div>
             <div
-                class='flex-grow-1 mx-2'
+                class='flex-grow-1 me-2'
                 style='min-width: 0'
             >
                 <CopyField
@@ -327,16 +320,14 @@
 
                 <div class='pt-1'>
                     <div
-                        v-if='cot.properties.type.startsWith("a-") || cot.properties.type.startsWith("u-") || isSIDCType(cot.properties.type)'
+                        v-if='hasAppearance'
                         class='px-2 py-2'
                     >
-                        <!-- Not keyed on the type - a remount would collapse the
-                             type selector every time a new type is picked -->
-                        <PropertyType
-                            :key='cot.properties.id'
+                        <AppearanceRow
+                            :properties='cot.properties'
+                            :geometry='cot.geometry'
                             :edit='is_editable'
-                            :model-value='cot.properties.type'
-                            @update:model-value='updatePropertyType($event)'
+                            @click='router.push(`/cot/${cot.id}/appearance`)'
                         />
                     </div>
 
@@ -538,13 +529,6 @@
                         :cot='cot'
                     />
                 </div>
-                <div v-else-if='mode === "style"'>
-                    <PropertyStyle
-                        :geometry='cot.geometry.type'
-                        :model-value='cot.properties'
-                        @update:model-value='updateStyle($event)'
-                    />
-                </div>
                 <div v-else-if='mode === "channels"'>
                     <Subscriptions :cot='cot' />
                 </div>
@@ -583,12 +567,10 @@
 <script setup lang='ts'>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router'
-import FeatureIcon from './util/FeatureIcon.vue';
 import BufferInput from './Inputs/BufferInput.vue';
 import MenuTemplate from './util/MenuTemplate.vue';
 import type COT from '../../base/cot.ts';
 import type { DBTaxonomy } from '../../database.ts';
-import type { Feature } from '../../types.ts';
 import { OriginMode } from '../../base/cot.ts'
 import Subscription from '../../base/subscription.ts'
 import {
@@ -606,7 +588,7 @@ import LineLength from './util/LineLength.vue';
 import PolygonArea from './util/PolygonArea.vue';
 import Coordinate from './util/Coordinate.vue';
 import PropertyProfile from './Property/PropertyProfile.vue';
-import PropertyType from './Property/PropertyType.vue';
+import AppearanceRow from './Appearance/AppearanceRow.vue';
 import PropertyMission from './Property/PropertyMission.vue';
 import PropertyOrigin from './Property/PropertyOrigin.vue';
 import PropertyRemarks from './Property/PropertyRemarks.vue';
@@ -633,7 +615,6 @@ import PropertyLinks from './Property/PropertyLinks.vue';
 import PropertyVideo from './Property/PropertyVideo.vue';
 import PropertyTimes from './Property/PropertyTimes.vue';
 import PropertyMetadata from './Property/PropertyMetadata.vue';
-import PropertyStyle from './Property/PropertyStyle.vue';
 import PropertyGeofence from './Property/PropertyGeofence.vue';
 import PropertyRadSensor from './Property/PropertyRadSensor.vue';
 import PropertyChemSensor from './Property/PropertyChemSensor.vue';
@@ -685,11 +666,6 @@ const router = useRouter();
 
 const cot = ref<COT | undefined>(undefined);
 
-function updateStyle(properties: Record<string, unknown>): void {
-    if (!cot.value) return;
-    cot.value.update({ properties: properties as Feature['properties'] });
-}
-
 const subscription = ref<Subscription | undefined>();
 
 const share = ref(false);
@@ -704,18 +680,24 @@ const username = ref<string | undefined>();
 const type = ref<DBTaxonomy | undefined>();
 const mode = ref('default');
 
-// PropertyStyle has no read-only mode so the tab only exists for editors
-const hasStyle = computed(() => is_editable.value && !!cot.value && !cot.value.is_self);
-
 const modeOptions = computed<Array<PropertyTab>>(() => {
     const opts: Array<PropertyTab> = [{ value: 'default', label: 'Details' }];
-    if (hasStyle.value) opts.push({ value: 'style', label: 'Style' });
     if (cot.value?.is_skittle) opts.push({ value: 'channels', label: 'Channels' });
     opts.push({ value: 'debug', label: 'Debug' });
     return opts;
 });
 const breadcrumbLive = ref(false);
 const bufferCotId = ref<string | null>(null);
+
+// Lines and polygons edit stroke/fill; points edit affiliation/type/marker
+// when they are Atom types, Custom Points or MIL-STD symbols
+const hasAppearance = computed(() => {
+    if (!cot.value || cot.value.is_self) return false;
+    if (cot.value.geometry.type !== 'Point') return true;
+
+    const type = cot.value.properties.type;
+    return type.startsWith('a-') || type === 'u-d-p' || isSIDCType(type);
+});
 const actionIconSize = 28;
 
 // The Entity a CoT is a projection of, when it couldn't be opened because
@@ -994,37 +976,6 @@ function updateProperty(key: string, event: any) {
         cot.value.properties[key] = event;
         cot.value.update({})
     }
-}
-
-function updatePropertyType(type: string): void {
-    if (!cot.value) return;
-
-    const isSIDC = Type2525.isNumericSIDCConvertable(type);
-
-    // The type property is authoritative - a stale milicon would otherwise be
-    // preferred by node-cot's from_geojson when the Feature is converted to a CoT
-    if (cot.value.properties.milicon) {
-        delete cot.value.properties.milicon;
-    }
-
-    if ((type.startsWith('a-') || isSIDC) && cot.value.properties.type.startsWith('u-')) {
-        cot.value.properties["marker-color"] = '#FFFFFF';
-    }
-
-    cot.value.properties.type = type;
-
-    // An Iconset icon is the user's own pick and survives a type change - the
-    // type otherwise drives the icon, and a MIL-STD symbol needs none at all
-    // since renderedIcon derives its key from the type
-    if (!cot.value.properties.icon || !cot.value.properties.icon.includes(':')) {
-        if (isSIDC) {
-            delete cot.value.properties.icon;
-        } else {
-            cot.value.properties.icon = type;
-        }
-    }
-
-    cot.value.update({});
 }
 
 function updateCoordinates(center: number[]): void {

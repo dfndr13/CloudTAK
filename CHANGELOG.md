@@ -38,6 +38,35 @@
 - :bug: Fix double-posted `Feature_Archived_Removed` worker message when deleting an archived CONNECTION-origin feature
 - :bug: Ensure the Media Server admin config UI keeps the legacy `media::url` key in sync with `media::public_url` when saved, instead of leaving it stale
 
+### v13.121.1 - 2026-11-07
+
+- :rocket: Migrate PMTile Tile utilities into the `@tak-ps/node-tiles` library for better unit testing and common usage across the API and ETL tasks
+- :arrow_up: Update all Lambda runtimes to Node 26
+
+### v13.121.0 - 2026-11-05
+
+- :tada: Introduce Slope & Composite Raster Layers
+- :bug: Data Sync names are trimmed on creation and existing names are trimmed by migration - TAK Server stores mission names trimmed but matches `<dest mission>` exactly, so a padded name left every Layer CoT brokered outside the Mission
+- :rocket: Layer CoTs submitted to a Data Sync are addressed by Mission GUID (`<dest mission-guid>`) rather than name, falling back to the trimmed name for Data Syncs without a stored GUID
+
+### v13.120.0 - 2026-11-05
+
+- :bug: Data Sync chat input is hidden unless the user is subscribed with `MISSION_WRITE` - TAK Server silently drops mission chat from read-only subscribers
+- :rocket: Subscribing to a Data Sync fetches the caller's role once instead of three times - `Subscription.load` skips the role refresh it just performed and `Subscription.update` adopts the stored role when another instance already applied the same subscription change
+- :tada: `PATCH /api/marti/missions/:guid` accepts `defaultRole` and a `password` (a string sets or replaces it, `null` removes it); the Mission response includes `defaultRole` (#2008)
+- :tada: Data Sync info screen shows the default subscriber role & password state with Set/Change/Remove controls for users with `MISSION_SET_ROLE` / `MISSION_SET_PASSWORD` (#2008)
+- :bug: Data Sync "Remove User" now removes the target subscriber (via a role-less TAK Server `PUT .../role`) instead of silently unsubscribing only the caller's own session; the button is gated on `MISSION_SET_ROLE` and failures are shown in the Users list (#2010)
+
+### v13.119.0 - 2026-11-03
+
+- :tada: Introduce new Appearance Menu
+- :rocket: Circle mode now snaps the center point to nearby feature vertices using the Terra-Draw 1.39.0 circle snapping options
+- :bug: Data Sync invite list hides current subscribers and pending invitees, re-inviting shows the server error instead of failing silently (#2009)
+
+### v13.118.1 - 2026-11-02
+
+- :rocket: Add additional Filter options when nominating an Event to a board
+
 ### v13.118.0 - 2026-11-02
 
 - :tada: Unify the `Your Features` and `Devices` menus into a single `Features` menu with `Features`, `Events` & `Devices` tabs - `/menu/devices` redirects to `/menu/features/devices`
