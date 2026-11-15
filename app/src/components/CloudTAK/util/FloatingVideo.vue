@@ -52,7 +52,7 @@
                 />
             </span>
 
-            <template v-if='!isNativePlatform()'>
+            <template v-if='!isNativePlatform() && !isImage'>
                 <TablerIconButton
                     v-if='!pushing'
                     title='Push to Video Wall'
@@ -79,7 +79,28 @@
                 :compact='true'
                 :err='pushError'
             />
+            <div
+                v-if='isImage'
+                class='flex-grow-1 d-flex align-items-center justify-content-center bg-black'
+            >
+                <TablerAlert
+                    v-if='imageError'
+                    class='w-100 mb-0'
+                    title='Still image unavailable'
+                    :compact='true'
+                    :err='new Error("The camera image could not be loaded")'
+                />
+                <img
+                    v-else-if='imageSrc'
+                    :src='imageSrc'
+                    :alt='title'
+                    style='max-width: 100%; max-height: 100%; object-fit: contain;'
+                    @load='imageError = false'
+                    @error='imageError = true'
+                >
+            </div>
             <VideoPlayer
+                v-else
                 class='flex-grow-1'
                 :url='video.config.url'
                 :lease='video.config.lease'
@@ -95,8 +116,9 @@
  * with stream metadata and push-to-Video-Wall support.
  */
 
-import { ref, computed } from 'vue'
-import { server } from '../../../std.ts';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { server, getRuntimeToken } from '../../../std.ts';
+import { proxyImageUrl, isImageLink } from './proxyImages.ts';
 import StatusDot from './../../util/StatusDot.vue';
 import VideoLeaseSourceType from './VideoLeaseSourceType.vue';
 import FloatingPane from './FloatingPane.vue';
@@ -134,6 +156,43 @@ const emit = defineEmits(['close']);
 const video = ref(floatStore.panes.get(props.uid) as Pane<PaneVideoConfig>);
 
 const metadata = ref<VideoPlayerMetadata | undefined>();
+
+// Still-image cameras (e.g. DOT snapshots) share the video play button but
+// link a picture, not a stream - show it, refreshed, instead of the player
+const STILL_REFRESH_MS = 10 * 1000;
+
+const isImage = computed(() => {
+    const url = video.value.config.url;
+    return video.value.config.lease === undefined && !!url && isImageLink({ url });
+});
+
+const token = ref<string | null | undefined>(undefined);
+const imageTick = ref(Date.now());
+const imageError = ref(false);
+let imageTimer: ReturnType<typeof setInterval> | undefined;
+
+const imageSrc = computed(() => {
+    if (!isImage.value || token.value === undefined) return;
+
+    const url = new URL(video.value.config.url as string);
+    url.searchParams.set('_', String(imageTick.value));
+
+    return proxyImageUrl(url.href, token.value) ?? undefined;
+});
+
+onMounted(async () => {
+    if (!isImage.value) return;
+
+    token.value = (await getRuntimeToken()) ?? null;
+    imageTimer = setInterval(() => {
+        imageError.value = false;
+        imageTick.value = Date.now();
+    }, STILL_REFRESH_MS);
+});
+
+onBeforeUnmount(() => {
+    if (imageTimer) clearInterval(imageTimer);
+});
 
 const pushing = ref(false);
 const pushError = ref<Error | undefined>();
