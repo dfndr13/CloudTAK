@@ -38,4 +38,14 @@ This fork builds the [location search plugin](https://github.com/dfndr13/cloudta
 
 CloudTAK and the plugin are both AGPL-3.0, so if you run a modified copy on a server other people use, you must offer them the source of your version. OpenStreetMap-based packs have their own credit and sharing terms, covered in the plugin README. This is general information, not legal advice.
 
+## Fork notes: still-image camera links
+
+Some camera feeds, such as state DOT snapshot cameras, publish a still picture instead of a video stream. When a CoT's `__video` `url` points at a picture (jpg, png and other image links), stock CloudTAK's radial play button opens nothing, because the player only plays streams. In this fork, `app/src/components/CloudTAK/util/FloatingVideo.vue` shows the picture in the same video pane instead:
+
+- It is loaded through CloudTAK's existing image proxy (`/api/proxy/image`), so the page's content security policy needs no new image sources.
+- It refreshes every 10 seconds while the pane is open.
+- "Push to Video Wall" is hidden for pictures. Streams and video leases work as before.
+
+The feed only needs to put the picture's address in `__video url`. ATAK reads the `ConnectionEntry` inside `__video`, so one CoT can serve both.
+
 
