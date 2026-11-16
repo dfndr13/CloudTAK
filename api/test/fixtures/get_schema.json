@@ -2158,5 +2158,20 @@
         "body": false,
         "query": false,
         "res": true
+    },
+    "GET /cam-depot/states": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /cam-depot/cameras": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /cam-depot/hls/:camera/:type.m3u8": {
+        "body": false,
+        "query": true,
+        "res": false
     }
 }

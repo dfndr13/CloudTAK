@@ -3,3 +3,4 @@ dev-dist/
 plugins/*
 !plugins/replay/
 !plugins/address-search/
+!plugins/cam-depot/
