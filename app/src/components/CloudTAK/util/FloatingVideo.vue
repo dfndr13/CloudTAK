@@ -159,7 +159,7 @@ const metadata = ref<VideoPlayerMetadata | undefined>();
 
 // Still-image cameras (e.g. DOT snapshots) share the video play button but
 // link a picture, not a stream - show it, refreshed, instead of the player
-const STILL_REFRESH_MS = 10 * 1000;
+const STILL_REFRESH_MS = 15 * 1000;
 
 const isImage = computed(() => {
     const url = video.value.config.url;

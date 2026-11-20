@@ -1,25 +1,26 @@
 /**
- * CloudTAK CAM Depot - open a camera in CloudTAK's floating video pane
+ * Cam Depot for CloudTAK - open a camera in CloudTAK's floating video pane
  *
  * The pane is the same one the radial play button opens: a picture URL shows as
  * a still (refreshed by the pane), anything else plays through a temporary
- * video lease. Agency streams go through this server's HLS relay so links with
- * expiring tokens keep playing.
+ * video lease, which CloudTAK deletes when the pane closes (so the stream stops).
+ * Video uses the stream link the catalog gives (TAKWERX's relay handles links
+ * with expiring tokens).
  */
 import { defineAsyncComponent } from 'vue';
 import type { Pinia } from 'pinia';
-import { stdurl } from '../../../src/std.ts';
 import { useFloatStore, VideoStoreType } from '../../../src/stores/float.ts';
 import type { Camera } from './state.ts';
 
 const FloatingVideo = defineAsyncComponent(() => import('../../../src/components/CloudTAK/util/FloatingVideo.vue'));
 
-export function relayUrl(camera: Camera): string {
-    return stdurl(`/api/cam-depot/hls/${encodeURIComponent(camera.id)}/playlist.m3u8`).href;
+/** Video URL: the catalog's own stream link */
+export function videoUrl(camera: Camera): string | null {
+    return camera.video ? camera.stream : null;
 }
 
 export function openCamera(pinia: Pinia, camera: Camera, mode: 'video' | 'still' = camera.video ? 'video' : 'still'): void {
-    const url = mode === 'video' && camera.video ? relayUrl(camera) : camera.still;
+    const url = mode === 'video' && camera.video ? videoUrl(camera) : camera.still;
     if (!url) return;
 
     const floatStore = useFloatStore(pinia);
