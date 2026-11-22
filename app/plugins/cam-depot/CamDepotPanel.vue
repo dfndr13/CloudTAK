@@ -489,6 +489,7 @@
                     </template>
                 </div>
                 <div>Independent plugin inspired by takwerx Cam Depot for ATAK; not made or supported by takwerx.</div>
+                <div>Cam Depot for CloudTAK v{{ VERSION }}</div>
             </div>
         </template>
     </MenuTemplate>
@@ -516,6 +517,7 @@ import {
 import type { Camera, Favorite, SearchResult } from './lib/state.ts';
 import { openCamera } from './lib/open.ts';
 import { syncCots, view } from './lib/cots.ts';
+import { VERSION } from './version.ts';
 
 const LIST_LIMIT = 200;
 const BIG_SELECTION = 5000;

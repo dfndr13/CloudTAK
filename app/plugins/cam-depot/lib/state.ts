@@ -75,7 +75,7 @@ const KINDS: Kind[] = ['all', 'video', 'still', 'fire', 'offline'];
 
 function loadPrefs(): Prefs {
     const prefs: Prefs = {
-        visible: true, states: ['KS'], onScreen: false,
+        visible: true, states: [], onScreen: false,
         kind: 'all', provider: '', counties: [], favorites: [], favoritesOnly: false,
     };
     try {
@@ -211,7 +211,7 @@ export async function loadStates(): Promise<void> {
     const known = new Set(state.sources.map((s) => s.id));
     const kept = state.states.filter((s) => known.has(s));
     if (kept.length !== state.states.length) {
-        state.states = kept.length ? kept : (state.sources.length ? [state.sources[0].id] : []);
+        state.states = kept;
         savePrefs();
     }
 }

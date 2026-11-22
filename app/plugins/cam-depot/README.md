@@ -87,6 +87,17 @@ Don't install or update it through the TAK Portal marketplace.
 | `patches/floating-video-stills.patch` | applied to `app/src/components/CloudTAK/util/FloatingVideo.vue` |
 | `install.sh` | run once per CloudTAK checkout |
 
+## Changes
+
+The version shows at the bottom of the Cam Depot panel (`plugin/version.ts`).
+
+### v1.1.0
+- No state is picked for first-time users (was Kansas); the States button reads "Pick states" until one is chosen.
+- A saved state that is no longer in the catalog is dropped instead of being swapped for the first state in the list.
+
+### v1.0.0
+- Every state and province from the Cam Depot catalog, status, filters, favorites, search across all states, Sync button.
+
 ## License
 
 AGPL-3.0, like CloudTAK.
