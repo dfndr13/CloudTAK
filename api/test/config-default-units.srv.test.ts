@@ -52,7 +52,7 @@ test('GET api/config/display', async () => {
             },
             coordinate: {
                 value: 'dd',
-                options: ['dd', 'dm', 'dms', 'mgrs', 'utm'],
+                options: ['dd', 'dm', 'dms', 'mgrs', 'utm', 'bng'],
             },
             text: {
                 value: 'Medium',
@@ -200,6 +200,12 @@ test('GET api/profile', async () => {
             display_icon_rotation: true,
             display_radiation_dose: 'rems',
             display_wakelock: 'Charging',
+            notification_contact: true,
+            notification_import: true,
+            notification_alert: true,
+            notification_medical: true,
+            notification_mission: true,
+            notification_chat: true,
             geometry_point_type: 'u-d-p',
             geometry_point_color: '#ff0000',
             geometry_point_icon: '',

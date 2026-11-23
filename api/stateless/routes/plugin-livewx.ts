@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CloudTAK server routes for LiveWX:
  *  - Blitzortung relay (clients never connect to Blitzortung directly)
@@ -100,7 +99,7 @@ function lzwDecode(input: string): string {
 
 function prune(): void {
     const cutoff = Date.now() - STALE_MS;
-    strikes = strikes.filter((s) => s.timeMs >= cutoff);
+    strikes = strikes.filter(s => s.timeMs >= cutoff);
 }
 
 async function loadWsCtor(): Promise<(new (url: string) => WsLike) | null> {
@@ -138,7 +137,9 @@ async function connectUpstream(): Promise<void> {
         return;
     }
     if (upstream) {
-        try { upstream.close(); } catch { /* ignore */ }
+        try {
+            upstream.close();
+        } catch { /* ignore */ }
         upstream = null;
     }
     const url = WS_SERVERS[upstreamIdx % WS_SERVERS.length];
@@ -159,7 +160,9 @@ async function connectUpstream(): Promise<void> {
 
     const onOpen = () => {
         connected = true;
-        try { upstream?.send(JSON.stringify({ a: 111 })); } catch { /* ignore */ }
+        try {
+            upstream?.send(JSON.stringify({ a: 111 }));
+        } catch { /* ignore */ }
     };
     const onMessage = (...args: unknown[]) => {
         try {
@@ -167,8 +170,8 @@ async function connectUpstream(): Promise<void> {
             const raw = typeof data === 'string'
                 ? data
                 : (data && typeof data === 'object' && 'data' in (data as object)
-                    ? String((data as { data: unknown }).data)
-                    : String(data));
+                        ? String((data as { data: unknown }).data)
+                        : String(data));
             const decoded = lzwDecode(raw);
             const rec = JSON.parse(decoded) as { lat?: number; lon?: number; time?: number };
             if (typeof rec.lat !== 'number' || typeof rec.lon !== 'number') return;
@@ -188,7 +191,9 @@ async function connectUpstream(): Promise<void> {
     };
     const onError = () => {
         connected = false;
-        try { upstream?.close(); } catch { /* ignore */ }
+        try {
+            upstream?.close();
+        } catch { /* ignore */ }
     };
 
     if (typeof sock.on === 'function') {
@@ -236,13 +241,14 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 timeMs: Type.Integer(),
             })),
         }),
+        security: Auth.security({ token: true }),
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req, { token: true });
+            await Auth.is_auth(config, req);
             await ensureUpstream();
             prune();
             const since = Number(req.query.since) || 0;
-            const out = strikes.filter((s) => s.timeMs > since);
+            const out = strikes.filter(s => s.timeMs > since);
             res.json({
                 connected,
                 attribution: 'Lightning data © Blitzortung.org & contributors (CC BY-SA 4.0)',
@@ -263,9 +269,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             // Required for MapLibre raster tiles (cannot set Authorization headers).
             token: Type.Optional(Type.String()),
         }),
+        security: Auth.security({ token: true }),
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req, { token: true });
+            await Auth.is_auth(config, req);
             const raw = String(req.query.url || '');
             let host: string;
             try {
@@ -281,7 +288,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const upstreamHref = encodeUpstreamUrl(raw);
             const upstreamRes = await fetch(upstreamHref, {
                 headers: {
-                    Accept: 'application/geo+json, application/json, image/*, */*',
+                    'Accept': 'application/geo+json, application/json, image/*, */*',
                     // Ask for an uncompressed body: on some CloudTAK API runtimes
                     // fetch() hands back gzip bytes undecoded and without the
                     // upstream content-type, which breaks JSON parsing in the client.
@@ -348,7 +355,7 @@ function encodeUpstreamUrl(raw: string): string {
     if (q < 0) return raw;
     const base = raw.slice(0, q);
     const query = raw.slice(q + 1);
-    const parts = [];
+    const parts: string[] = [];
     for (const part of query.split('&')) {
         if (!part) continue;
         const eq = part.indexOf('=');

@@ -1,14 +1,4 @@
 {
-    "GET /schema": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /openapi": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
     "GET /agency": {
         "body": false,
         "query": true,
@@ -490,6 +480,36 @@
         "res": true
     },
     "DELETE /core/device/:device": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/entity/:entity/timeline": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /core/entity/:entity/timeline/:entry": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /core/entity/:entity/timeline": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /core/entity/:entity/timeline": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /core/entity/:entity/timeline/:entry": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /core/entity/:entity/timeline/:entry": {
         "body": false,
         "query": false,
         "res": true
@@ -1359,6 +1379,46 @@
         "query": false,
         "res": true
     },
+    "GET /cam-depot/states": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /cam-depot/sync": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /cam-depot/cameras": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /cam-depot/search": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /cam-depot/status": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /cam-depot/still/:camera.jpg": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
+    "GET /livewx/lightning": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /livewx/proxy": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
     "GET /takcad/geocode": {
         "body": false,
         "query": true,
@@ -1388,6 +1448,41 @@
         "body": false,
         "query": true,
         "res": true
+    },
+    "GET /plugin": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /plugin/:plugin": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /plugin": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /plugin/:plugin": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /plugin/:plugin": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /plugin/:plugin/bundle": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "GET /plugin/:plugin/bundle": {
+        "body": false,
+        "query": true,
+        "res": false
     },
     "GET /profile/asset": {
         "body": false,
@@ -1754,6 +1849,16 @@
         "query": false,
         "res": true
     },
+    "GET /schema": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /openapi": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /swagger": {
         "body": false,
         "query": false,
@@ -1889,48 +1994,83 @@
         "query": false,
         "res": true
     },
-    "GET /dispatcher/settings": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PUT /dispatcher/settings/:key": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /dispatcher/events": {
+    "GET /iconset": {
         "body": false,
         "query": true,
         "res": true
     },
-    "POST /dispatcher/events": {
+    "POST /iconset": {
         "body": true,
         "query": false,
         "res": true
     },
-    "PATCH /dispatcher/events/:eventid": {
+    "PATCH /iconset/:iconset": {
         "body": true,
         "query": false,
         "res": true
     },
-    "DELETE /dispatcher/events/:eventid": {
+    "GET /iconset/:iconset": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /iconset/:iconset/regen": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /dispatcher/events/:eventid/incidents": {
+    "DELETE /iconset/:iconset": {
         "body": false,
         "query": false,
         "res": true
     },
-    "POST /dispatcher/events/:eventid/incidents": {
+    "POST /iconset/:iconset/icon": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "GET /icon": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /iconset/:iconset/icon/:icon": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /iconset/:iconset/icon/:icon": {
         "body": true,
         "query": false,
         "res": true
     },
-    "PATCH /dispatcher/incidents/:incidentid": {
+    "DELETE /iconset/:iconset/icon/:icon": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /iconset/:iconset/sprite{:size}.json": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /iconset/:iconset/sprite{:size}.png": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "GET /sidebar-config": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /sidebar-config": {
         "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /sidebar-config/push": {
+        "body": false,
         "query": false,
         "res": true
     },
@@ -2019,71 +2159,6 @@
         "query": false,
         "res": true
     },
-    "GET /iconset": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /iconset": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PATCH /iconset/:iconset": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /iconset/:iconset": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /iconset/:iconset/regen": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "DELETE /iconset/:iconset": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /iconset/:iconset/icon": {
-        "body": true,
-        "query": true,
-        "res": true
-    },
-    "GET /icon": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /iconset/:iconset/icon/:icon": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PATCH /iconset/:iconset/icon/:icon": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /iconset/:iconset/icon/:icon": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /iconset/:iconset/sprite{:size}.json": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /iconset/:iconset/sprite{:size}.png": {
-        "body": false,
-        "query": true,
-        "res": false
-    },
     "GET /search": {
         "body": false,
         "query": false,
@@ -2134,59 +2209,149 @@
         "query": true,
         "res": true
     },
-    "GET /livewx/lightning": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /livewx/proxy": {
-        "body": false,
-        "query": true,
-        "res": false
-    },
-    "GET /sidebar-config": {
+    "GET /dispatcher/address/settings": {
         "body": false,
         "query": false,
         "res": true
     },
-    "PUT /sidebar-config": {
+    "PUT /dispatcher/address/settings": {
         "body": true,
         "query": false,
         "res": true
     },
-    "POST /sidebar-config/push": {
+    "GET /dispatcher/address/sources": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /cam-depot/states": {
+    "POST /dispatcher/address/sources": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/address/sources/:sourceid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /dispatcher/address/sources/:sourceid": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /cam-depot/cameras": {
+    "POST /dispatcher/address/sources/:sourceid/loads": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/address/sources/:sourceid/loads/:loadid/rows": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/address/sources/:sourceid/loads/:loadid/commit": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/address/sources/:sourceid/loads/:loadid/abort": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/address/probe": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/address/sources/:sourceid/refresh": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/address/suggest": {
         "body": false,
         "query": true,
         "res": true
     },
-    "POST /cam-depot/sync": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /cam-depot/status": {
+    "GET /dispatcher/address/reverse": {
         "body": false,
         "query": true,
         "res": true
     },
-    "GET /cam-depot/search": {
+    "GET /dispatcher/settings": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /dispatcher/settings/:key": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/events": {
         "body": false,
         "query": true,
         "res": true
     },
-    "GET /cam-depot/still/:camera.jpg": {
+    "POST /dispatcher/events": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/events/:eventid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /dispatcher/events/:eventid": {
         "body": false,
         "query": false,
-        "res": false
+        "res": true
+    },
+    "GET /dispatcher/events/:eventid/incidents": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/events/:eventid/incidents": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/incidents/:incidentid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /dispatcher/incidents/:incidentid/units": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/incidents/:incidentid/units/:uid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /dispatcher/incidents/:incidentid/units/:uid": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /dispatcher/incidents/:incidentid/callers": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /dispatcher/incidents/:incidentid/callers/:callerid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /dispatcher/incidents/:incidentid/callers/:callerid": {
+        "body": false,
+        "query": false,
+        "res": true
     }
 }

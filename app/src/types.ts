@@ -88,6 +88,9 @@ export type CoreEntityAssignmentList = paths["/api/core/event/{:event}/assignmen
 export type CoreEntityAssignment = CoreEntityAssignmentList["items"][0];
 /** Editable form of an Assignment - a blank username means no Profile link */
 export type CoreEntityAssignmentInput = { name: string; uid: string; role: string; remarks: string };
+export type CoreEntityTimelineList = paths["/api/core/entity/{:entity}/timeline"]["get"]["responses"]["200"]["content"]["application/json"];
+export type CoreEntityTimelineEntry = CoreEntityTimelineList["items"][0];
+export type CoreEntityTimelineType = CoreEntityTimelineEntry["type"];
 
 export type Contact = paths["/api/marti/api/contacts/all"]["get"]["responses"]["200"]["content"]["application/json"][0];
 export type ContactList = paths["/api/marti/api/contacts/all"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -189,6 +192,8 @@ export type APIProfileChat = {
 }
 
 export type MissionTemplate = paths["/api/template/mission/{:mission}"]["get"]["responses"]["200"]["content"]["application/json"]
+export type PluginList = paths["/api/plugin"]["get"]["responses"]["200"]["content"]["application/json"]
+export type Plugin = PluginList["items"][0]
 export type MissionTemplateList = paths["/api/template/mission"]["get"]["responses"]["200"]["content"]["application/json"]
 export type MissionTemplateLog = paths["/api/template/mission/{:mission}/log/{:log}"]["get"]["responses"]["200"]["content"]["application/json"]
 export type MissionTemplateLogList = paths["/api/template/mission/{:mission}/log"]["get"]["responses"]["200"]["content"]["application/json"]

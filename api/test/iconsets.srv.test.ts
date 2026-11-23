@@ -154,19 +154,19 @@ test('GET: /api/icon', async () => {
         assert.equal(res.body.total, 4);
         assert.equal(res.body.items.length, 4);
 
-        const cameraPng = res.body.items.find((i: any) => i.name === 'google/camera' && i.format === '.png');
+        const cameraPng = res.body.items.find((i: { name: string; format: string }) => i.name === 'google/camera' && i.format === '.png');
         assert.ok(cameraPng);
         assert.equal(cameraPng.path, 'test-iconset/google/camera');
 
-        const carPng = res.body.items.find((i: any) => i.name === 'car' && i.format === '.png');
+        const carPng = res.body.items.find((i: { name: string; format: string }) => i.name === 'car' && i.format === '.png');
         assert.ok(carPng);
         assert.equal(carPng.path, 'test-iconset/car');
 
-        const cameraSvg = res.body.items.find((i: any) => i.name === 'google/marker' && i.format === '.svg');
+        const cameraSvg = res.body.items.find((i: { name: string; format: string }) => i.name === 'google/marker' && i.format === '.svg');
         assert.ok(cameraSvg);
         assert.equal(cameraSvg.path, 'test-iconset/google/marker');
 
-        const truckSvg = res.body.items.find((i: any) => i.name === 'truck' && i.format === '.svg');
+        const truckSvg = res.body.items.find((i: { name: string; format: string }) => i.name === 'truck' && i.format === '.svg');
         assert.ok(truckSvg);
         assert.equal(truckSvg.path, 'test-iconset/truck');
     } catch (err) {
@@ -244,6 +244,44 @@ test('GET: /api/iconset/:iconset?format=zip', async () => {
   <icon name="car.png"/>
   <icon name="google/marker.png"/>
   <icon name="truck.png"/>
+</iconset>`);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET: /api/iconset/:iconset?format=zip&variant=cloudtak', async () => {
+    try {
+        const res = await flight.fetch('/api/iconset/test-iconset?format=zip&variant=cloudtak&resize=true', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, {
+            json: false,
+            binary: true,
+        });
+
+        assert.equal(res.status, 200);
+
+        fs.rmSync('/tmp/test-iconset-cloudtak', { recursive: true, force: true });
+        fs.writeFileSync('/tmp/test-iconset-cloudtak.zip', Buffer.from(res.body));
+        cp.execSync('unzip -o /tmp/test-iconset-cloudtak.zip -d /tmp/test-iconset-cloudtak');
+
+        const camera = await sharp('/tmp/test-iconset-cloudtak/google/camera.png').metadata();
+        assert.equal(camera.format, 'png');
+
+        assert.ok(fs.readFileSync('/tmp/test-iconset-cloudtak/google/marker.svg', 'utf8').startsWith('<svg'));
+        assert.ok(fs.readFileSync('/tmp/test-iconset-cloudtak/truck.svg', 'utf8').startsWith('<svg'));
+        assert.ok(!fs.existsSync('/tmp/test-iconset-cloudtak/truck.png'));
+
+        const xml = fs.readFileSync('/tmp/test-iconset-cloudtak/iconset.xml', 'utf8');
+        assert.equal(xml, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<iconset version="1" defaultFriendly="test" defaultHostile="test" defaultNeutral="test" defaultUnknown="test" name="Test Iconset" defaultGroup="test" skipResize="false" uid="test-iconset">
+  <icon name="google/camera.png"/>
+  <icon name="car.png"/>
+  <icon name="google/marker.svg"/>
+  <icon name="truck.svg"/>
 </iconset>`);
     } catch (err) {
         assert.ifError(err);
@@ -440,6 +478,47 @@ test('PATCH: /api/iconset/:iconset/icon/:icon - rejects unsafe name', async () =
 
         assert.equal(res.status, 400);
         assert.equal(res.body.message, 'Icon name must be a relative path without empty, "." or ".." segments');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: /api/iconset/:iconset/icon/:icon - move between folders', async () => {
+    try {
+        const icon = await flight.fetch('/api/iconset/test-iconset/icon/car', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        const moved = await flight.fetch(`/api/iconset/test-iconset/icon/${icon.body.id}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'vehicles/car',
+            },
+        }, true);
+
+        assert.equal(moved.body.name, 'vehicles/car');
+        assert.equal(moved.body.format, '.png');
+        assert.equal(moved.body.path, 'test-iconset/vehicles/car');
+
+        const restored = await flight.fetch(`/api/iconset/test-iconset/icon/${icon.body.id}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'car.png',
+            },
+        }, true);
+
+        assert.equal(restored.body.name, 'car');
+        assert.equal(restored.body.format, '.png');
+        assert.equal(restored.body.path, 'test-iconset/car');
     } catch (err) {
         assert.ifError(err);
     }

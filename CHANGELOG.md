@@ -38,6 +38,111 @@
 - :bug: Fix double-posted `Feature_Archived_Removed` worker message when deleting an archived CONNECTION-origin feature
 - :bug: Ensure the Media Server admin config UI keeps the legacy `media::url` key in sync with `media::public_url` when saved, instead of leaving it stale
 
+### v13.128.0 - 2026-11-22
+
+- :tada: Add a `variant` query parameter to the `GET /api/iconset/:iconset?format=zip` export: `tak` (default) converts every icon to PNG for TAK clients, `cloudtak` keeps the original files including SVGs
+- :tada: Iconset download button is now a dropdown offering "TAK Compatible" or "Full CloudTAK" exports
+- :bug: Iconset zip exports are no longer truncated at 1,000 icons
+- :bug: Icons referenced with an `.svg` extension now resolve from the offline icon cache instead of relying on a network fallback
+- :rocket: Consolidate icon key normalisation, icon API calls, built-in sprite caching and iconset resync behind the `Icon`, `Sprite` and `IconManager` modules
+- :rocket: Share iconset and icon listing between the icon pickers via a `useIconsetIcons` composable
+- :white_check_mark: Add tests for the full CloudTAK iconset export and icon key normalisation
+- :bug: Fix the Data Sync Invite QR Code showing a broken image for password protected Data Syncs (#2032)
+- :bug: Fix a newly created Data Sync occasionally reporting "Overlay was created but could not be loaded"
+- :rocket: Move Data Sync creation from a modal to a `New Data Sync` menu sidebar
+- :rocket: Allow retrying the map load of a newly created Data Sync without creating it a second time
+- :rocket: The login token is no longer included in the Invite QR Code image URL
+- :rocket: Migrate the PMTiles, Events & Retention tasks from ESLint to OXLint to match the API
+- :arrow_up: Update PMTiles `@maplibre/geojson-vt` to v7
+
+### v13.127.0 - 2026-11-21
+
+- :tada: Redesign Iconset List UX to be combined into a single searchable menu instead of two seperate tabs
+- :tada: Redesigned iconset view that supports folder editing
+- :tada: Allow dropping multiple points via the native point dropper tool
+- :tada: Allow setting an icon from the point dropper
+- :tada: Support dropping a point from a single icon menu page
+
+### v13.126.0 - 2026-11-21
+
+- :tada: Introduce Initial Plugin Management APIs for future stand-alone plugins
+- :rocket: Redesign Admin Overview page to allow linking to a specific CloudTAK server setting section
+
+### v13.125.0 - 2026-11-17
+
+- :rocket: Add background downloading on iOS and Android w/ Download Notifications
+- :rocket: Add British National Grid to supported coordinates
+- :rocket: Restrict database ingress to the API & Stateful services and export the database Security Group
+- :rocket: Retain database backups for 14 days, export PostgreSQL logs & snapshot on delete/replace
+- :rocket: Pin ELB HTTPS listener to a TLS 1.2+ policy and drop invalid header fields
+- :rocket: Scope API Task Role & ETL Role IAM permissions to Layer resources
+- :rocket: Remove unused Secrets Manager & KMS permissions from the Events & Retention Task Roles
+- :rocket: Mail: require TLS, drop mail failing both SPF & DKIM, publish SPF & `p=reject` DMARC records
+
+### v13.124.0 - 2026-11-17
+
+- :arrow_up: Migrate to TS7 for blazing build times - `tsc` is TypeScript 7.0 via `@typescript/native`, tools that need the compiler API (ESLint, `vue-tsc`, TypeDoc) stay on the TypeScript 6 API
+- :arrow_up: Migrate the API off ESLint onto OXLint for blazing lint times
+- :bug: Fix numerous small bugs in the codebase surfaced by OXLint
+- :bug: Paging verification codes are accepted for one 30 second period either side of the current one - the tolerance was never applied, so a code expired at the end of the period it was sent in
+
+### v13.123.2 - 2026-11-17
+
+- :bug: Generate Links that are valid in ATAK
+
+### v13.123.1 - 2026-11-16
+
+- :rocket: Consolidate Permissions
+- :bug: Rectify Mission Changes API call body against TAK Server generated schema
+
+### v13.123.0 - 2026-11-16
+
+- :tada: `API` Core Devices accept a `stale` number of seconds - the Device is no longer broadcast to TAK clients once that long has passed since it was last updated, until its next update. The value is stored on the Core Entity so other kinds can adopt it
+- :rocket: `API` A Core Device without a `stale` is broadcast with a 30 second stale time in place of 30 minutes, so a Device that loses its location or is deleted drops from TAK clients promptly
+- :rocket: `API` Route `security` declarations are now enforced by `@openaddresses/batch-schema` before a request body is parsed or validated - a route without a declaration accepts users only, and every route that accepts Layer, Connection or other resource tokens, a `token` query parameter, or requires a System Administrator declares it via `Auth.security()`
+- :rocket: `API` The token of a request is parsed once and shared by every `Auth` call of a route handler
+- :rocket: `API` An unauthenticated request now receives its `401` before any validation error, with a `WWW-Authenticate` header
+
+### v13.122.8 - 2026-11-10
+
+- :rocket: Display and allow filtering by Layer ID
+
+### v13.122.7 - 2026-11-10
+
+- :rocket: Include Auth Information for failing requests
+
+### v13.122.6 - 2026-11-10
+
+- :bug: HTTP Clients were reused and would then have a potential request killed if it was cutoff by the 60s ALB timeout for the hub
+- :bug: Add 8 sec timeouts to Tile Lambda internal timeouts
+- :bug: Cache empty feature collections
+
+### v13.122.5 - 2026-11-09
+
+- :rocket: Allow users to configure desired notifications.
+
+### v13.122.4 - 2026-11-09
+
+- :rocket: Add support for ephemeral PolyLines via node-cot
+
+### v13.122.3 - 2026-11-09
+
+- :bug: Ensure enter submits the password when joining a password protected Data Sync - Closes: https://github.com/dfpc-coe/CloudTAK/issues/2026
+
+### v13.122.2 - 2026-11-08
+
+- :bug: Ensure app can't be built with plugins
+
+### v13.122.1 - 2026-11-08
+
+- :arrow_up: Update etl-base & node-cot to latest versions
+
+### v13.122.0 - 2026-11-08
+
+- :rocket: Refactor lower tabs into top level tabs for better visibility and discoverability of features
+- :rocket: Redesign Links & Data Syncs property panels to be more visually consistent
+- :tada: Introduce Core Event Timeline APIs for storing timelined events related to an Entity
+
 ### v13.121.1 - 2026-11-07
 
 - :rocket: Migrate PMTile Tile utilities into the `@tak-ps/node-tiles` library for better unit testing and common usage across the API and ETL tasks

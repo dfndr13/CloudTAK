@@ -1,5 +1,7 @@
-// @ts-nocheck
-/* eslint-disable */
+/**
+ * CloudTAK server routes for Sidebar Configurator.
+ * Copied into api/stateless/routes/ by install.sh — must pass OXLint (CloudTAK 13.124+).
+ */
 import { Type } from '@sinclair/typebox';
 import { sql } from 'drizzle-orm';
 import Schema from '@openaddresses/batch-schema';
@@ -53,8 +55,20 @@ type StoredConfig = {
   updatedBy: string | null;
 };
 
+/** OXLint no-base-to-string (CloudTAK 13.124+): never String(unknown). */
+function asString(raw: unknown, fallback = ''): string {
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'number' || typeof raw === 'boolean' || typeof raw === 'bigint') {
+    return String(raw);
+  }
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return raw.toISOString();
+  }
+  return fallback;
+}
+
 function normalizeApplyMode(raw: unknown): ApplyMode {
-  const v = String(raw || '').trim().toLowerCase();
+  const v = asString(raw).trim().toLowerCase();
   if (v === 'forced') return 'forced';
   if (v === 'soft') return 'soft';
   return 'off';
@@ -69,7 +83,7 @@ async function query<T>(config: ConfigStateless, statement: ReturnType<typeof sq
 }
 
 function normalizeVisibility(raw: unknown): 'full' | 'partial' | 'hidden' {
-  const v = String(raw || 'full');
+  const v = asString(raw, 'full');
   if (v === 'partial' || v === 'hidden' || v === 'full') return v;
   return 'full';
 }
@@ -80,7 +94,7 @@ function normalizeItems(raw: unknown): MenuPref[] {
   const seen = new Set<string>();
   for (const row of raw) {
     if (!row || typeof row !== 'object') continue;
-    const key = String((row as { key?: unknown }).key || '').trim();
+    const key = asString((row as { key?: unknown }).key).trim();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push({
@@ -148,13 +162,18 @@ async function readConfig(config: ConfigStateless): Promise<StoredConfig> {
   }
 
   const row = rows[0];
-  const updatedAt = row.updated_at ? String(row.updated_at) : null;
+  const updatedAt = row.updated_at ? asString(row.updated_at) : null;
   // No admin save yet → Off, even if an older bootstrap row still says Soft.
   const mode = updatedAt ? normalizeApplyMode(row.mode) : 'off';
 
   const parse = (raw: unknown): unknown => {
     if (typeof raw === 'string') {
-      try { return JSON.parse(raw); } catch { return []; }
+      try {
+        return JSON.parse(raw);
+      } catch {
+        // Invalid JSON in DB → treat as empty layout.
+        return [];
+      }
     }
     return raw;
   };
@@ -165,7 +184,7 @@ async function readConfig(config: ConfigStateless): Promise<StoredConfig> {
     userItems: normalizeItems(parse(row.user_items)),
     adminItems: normalizeItems(parse(row.admin_items)),
     updatedAt,
-    updatedBy: row.updated_by ? String(row.updated_by) : null,
+    updatedBy: row.updated_by ? asString(row.updated_by) : null,
   };
 }
 
@@ -243,7 +262,7 @@ async function pushConfig(config: ConfigStateless, stored: StoredConfig): Promis
   // Push always force-overwrites (even when apply mode is New Users Only / soft). Soft only
   // affects automatic client-side seeding on login.
   for (const profile of profiles) {
-    const username = String(profile.username || '');
+    const username = asString(profile.username);
     if (!username) {
       skipped += 1;
       continue;
@@ -317,6 +336,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
       adminItems: Type.Array(MenuPrefSchema),
     }),
     res: ConfigSchema,
+    security: Auth.security({ admin: true }),
   }, async (req, res) => {
     try {
       const user = await Auth.as_user(config, req, { admin: true });
@@ -345,6 +365,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     group: 'SidebarConfigurator',
     description: 'Force-overwrite sidebars for all non-admin users (and admins if manageAdminSidebar). Ignores New Users Only empty-only rules. Off: no-op.',
     res: PushResultSchema,
+    security: Auth.security({ admin: true }),
   }, async (req, res) => {
     try {
       await Auth.as_user(config, req, { admin: true });

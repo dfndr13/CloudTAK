@@ -2,12 +2,28 @@ import Modeler, { GenericListInput } from '@openaddresses/batch-generic';
 import { Static, Type } from '@sinclair/typebox';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { Basemap, BasemapVector, BasemapRaster, BasemapTerrain } from '../schema.js';
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import { Basemap_Type } from '../enums.js';
+import type { PgInsertValue, PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
 export const BasemapCollection = Type.Object({
     name: Type.String(),
 });
+
+type SpecificInput = Partial<Omit<InferInsertModel<typeof BasemapVector>, 'id' | 'basemap'>>
+    & Partial<Omit<InferInsertModel<typeof BasemapTerrain>, 'id' | 'basemap'>>;
+
+export type BasemapInput = PgInsertValue<typeof Basemap> & SpecificInput;
+
+export type BasemapPatch = PgUpdateSetSource<typeof Basemap> & SpecificInput;
+
+export type BasemapRow = InferSelectModel<typeof Basemap>
+    & Omit<InferSelectModel<typeof BasemapVector>, 'id' | 'basemap'>
+    & Partial<Omit<InferSelectModel<typeof BasemapTerrain>, 'id' | 'basemap'>>;
+
+export type BasemapListRow = InferSelectModel<typeof Basemap>
+    & Partial<Omit<InferSelectModel<typeof BasemapVector>, 'id' | 'basemap'>>
+    & Partial<Omit<InferSelectModel<typeof BasemapTerrain>, 'id' | 'basemap'>>;
 
 export default class BasemapModel extends Modeler<typeof Basemap> {
     constructor(
@@ -24,15 +40,23 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
      * still declare a non-degenerate range so MapLibre has zoom levels to clamp
      * requests into.
      */
-    #normalizeZoomRange(minzoom: number | undefined, maxzoom: number | undefined): { minzoom: number | undefined; maxzoom: number | undefined } {
-        if (typeof minzoom === 'number' && typeof maxzoom === 'number' && minzoom === maxzoom) {
-            return { minzoom, maxzoom: maxzoom + 4 };
+    #normalizeZoomRange<Min, Max>(minzoom: Min, maxzoom: Max): { minzoom: Min; maxzoom: Max | number } {
+        const min: unknown = minzoom;
+        const max: unknown = maxzoom;
+        if (typeof min === 'number' && typeof max === 'number' && min === max) {
+            return { minzoom, maxzoom: max + 4 };
         }
 
         return { minzoom, maxzoom };
     }
 
-    async generate(input: any): Promise<any> {
+    async generate(input: BasemapInput): Promise<BasemapRow>;
+    async generate(input: Array<PgInsertValue<typeof Basemap>>): Promise<Array<InferSelectModel<typeof Basemap>>>;
+    async generate(
+        input: BasemapInput | Array<PgInsertValue<typeof Basemap>>,
+    ): Promise<BasemapRow | Array<InferSelectModel<typeof Basemap>>> {
+        if (Array.isArray(input)) return await super.generate(input);
+
         const { minzoom, maxzoom } = this.#normalizeZoomRange(input.minzoom, input.maxzoom);
 
         const base = await super.generate({
@@ -83,7 +107,7 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
         return this.from(base.id);
     }
 
-    async from(id: number): Promise<any> {
+    async from(id: number): Promise<BasemapRow> {
         const base = await super.from(id);
 
         let specific;
@@ -109,7 +133,7 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
         };
     }
 
-    async commit(id: number, input: any): Promise<any> {
+    async commit(id: number, input: BasemapPatch): Promise<BasemapRow> {
         const { minzoom, maxzoom } = this.#normalizeZoomRange(input.minzoom, input.maxzoom);
 
         const base = await super.commit(id, {
@@ -139,7 +163,7 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
         });
 
         if (base.type === Basemap_Type.VECTOR) {
-            const vector: any = {};
+            const vector: SpecificInput = {};
             if (input.styles !== undefined) vector.styles = input.styles;
             if (input.iconset !== undefined) vector.iconset = input.iconset;
             if (input.snapping_enabled !== undefined) vector.snapping_enabled = input.snapping_enabled;
@@ -163,7 +187,7 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
             await this.pool.delete(BasemapRaster).where(eq(BasemapRaster.basemap, base.id));
             await this.pool.delete(BasemapTerrain).where(eq(BasemapTerrain.basemap, base.id));
         } else if (base.type === Basemap_Type.TERRAIN) {
-            const terrain: any = {};
+            const terrain: SpecificInput = {};
             if (input.encoding !== undefined) terrain.encoding = input.encoding;
 
             if (Object.keys(terrain).length > 0) {
@@ -183,7 +207,7 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
             await this.pool.delete(BasemapRaster).where(eq(BasemapRaster.basemap, base.id));
             await this.pool.delete(BasemapVector).where(eq(BasemapVector.basemap, base.id));
         } else {
-            const raster: any = {};
+            const raster: Record<string, never> = {};
 
             if (Object.keys(raster).length > 0) {
                 await this.pool.insert(BasemapRaster).values({
@@ -210,7 +234,7 @@ export default class BasemapModel extends Modeler<typeof Basemap> {
         await super.delete(id);
     }
 
-    async list(query: GenericListInput = {}): Promise<{ total: number; items: Array<any> }> {
+    async list(query: GenericListInput = {}): Promise<{ total: number; items: Array<BasemapListRow> }> {
         // Warning: This implementation of list does NOT join specific tables on listing for performance
         // This means specific fields like 'styles' won't be in the list view unless we do manual joins here
         // However, standard Model.list usually just queries the main table.

@@ -9,7 +9,7 @@ import { IconResponse } from '../../common/types.js';
 import { sql } from 'drizzle-orm';
 import Sharp from 'sharp';
 
-const SpriteSmith = promisify(spritesmith.run);
+const SpriteSmith = promisify(spritesmith.run.bind(spritesmith));
 
 type SpriteConfig = {
     name?: keyof Static<typeof IconResponse>;
@@ -26,6 +26,10 @@ const SUPPORTED_MIME = [
 ];
 
 export default class SpriteBuilder {
+    static supportedExt(ext: string): boolean {
+        return SUPPORTED_EXT.includes(ext.toLowerCase());
+    }
+
     static validateName(name: string): void {
         const segments = name.split('/');
 
@@ -151,7 +155,7 @@ export default class SpriteBuilder {
 
         const doc = await SpriteSmith({ src });
 
-        const coords: Record<string, any> = {};
+        const coords: Record<string, typeof doc.coordinates[string] & { pixelRatio: number }> = {};
         for (const key in doc.coordinates) {
             coords[key.replace(/\.png$/, '')] = {
                 ...doc.coordinates[key],
