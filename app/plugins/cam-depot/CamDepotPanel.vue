@@ -632,7 +632,7 @@ async function openFavorite(fav: Favorite): Promise<void> {
 const placeFilter = ref('');
 
 const pickedLabel = computed(() => {
-    if (!state.states.length) return 'Pick states';
+    if (!state.states.length) return 'Pick state(s)';
     const names = state.states.map((id) => state.sources.find((s) => s.id === id)?.name || id);
     return names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ');
 });

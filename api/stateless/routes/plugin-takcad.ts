@@ -128,11 +128,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         res: Type.Any(),
     }, async (req, res) => {
         try {
-            await Auth.is_auth(config, req);
-
             let api;
             if (req.query.connection) {
-                const connection = await config.models.Connection.from(parseInt(String(req.query.connection)));
+                // Auth.is_connection enforces the caller actually has access to the
+                // named connection (system admin, or agency admin for its agency)
+                // before its cert is used - is_auth alone only proves the caller is
+                // logged in, not that they may act as this specific connection.
+                const { connection } = await Auth.is_connection(config, req, {}, Number(req.query.connection));
                 api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
             } else {
                 const user = await Auth.as_user(config, req);
@@ -172,11 +174,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         res: Type.Any(),
     }, async (req, res) => {
         try {
-            await Auth.is_auth(config, req);
-
             let api;
             if (req.query.connection) {
-                const connection = await config.models.Connection.from(parseInt(String(req.query.connection)));
+                // Auth.is_connection enforces the caller actually has access to the
+                // named connection (system admin, or agency admin for its agency)
+                // before its cert is used - is_auth alone only proves the caller is
+                // logged in, not that they may act as this specific connection.
+                const { connection } = await Auth.is_connection(config, req, {}, Number(req.query.connection));
                 api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
             } else {
                 const user = await Auth.as_user(config, req);
@@ -214,11 +218,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         res: Type.Any(),
     }, async (req, res) => {
         try {
-            await Auth.is_auth(config, req);
-
             let api;
             if (req.query.connection) {
-                const connection = await config.models.Connection.from(parseInt(String(req.query.connection)));
+                // Auth.is_connection enforces the caller actually has access to the
+                // named connection (system admin, or agency admin for its agency)
+                // before its cert is used - is_auth alone only proves the caller is
+                // logged in, not that they may act as this specific connection.
+                const { connection } = await Auth.is_connection(config, req, {}, Number(req.query.connection));
                 api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
             } else {
                 const user = await Auth.as_user(config, req);
@@ -252,11 +258,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         res: Type.Any(),
     }, async (req, res) => {
         try {
-            await Auth.is_auth(config, req);
-
             let api;
             if (req.query.connection) {
-                const connection = await config.models.Connection.from(parseInt(String(req.query.connection)));
+                // Auth.is_connection enforces the caller actually has access to the
+                // named connection (system admin, or agency admin for its agency)
+                // before its cert is used - is_auth alone only proves the caller is
+                // logged in, not that they may act as this specific connection.
+                const { connection } = await Auth.is_connection(config, req, {}, Number(req.query.connection));
                 api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
             } else {
                 const user = await Auth.as_user(config, req);

@@ -55,7 +55,7 @@ Catalog rules (TAKWERX's terms): the catalog is read at most once a day with its
 ## Requirements
 
 - **Pictures need a small CloudTAK change:** the video pane (`app/src/components/CloudTAK/util/FloatingVideo.vue`) showing image links as a refreshing picture through CloudTAK's image proxy. The installer applies it (`patches/floating-video-stills.patch`; already in the `dfndr13/CloudTAK` fork).
-- CloudTAK with the image proxy (`/api/proxy/image`, upstream since October 2026). Tested on v13.121.1 and on a clean v13.124.0 with the installer.
+- CloudTAK with the image proxy (`/api/proxy/image`, upstream since October 2026). Tested on v13.121.1, and on clean v13.124.0 and v13.128.0 with the installer.
 - CloudTAK's server needs outbound HTTPS to the catalog and the picture hosts, and CloudTAK's media server needs outbound HTTPS to the stream hosts.
 
 ## Install
@@ -76,7 +76,7 @@ The installer only changes files, and each step is skipped if it's already done,
 4. adds `!app/plugins/cam-depot` to `.dockerignore` (standard CloudTAK leaves plugin folders out of the image) and to `app/.gitignore` where needed;
 5. adds the plugin's six routes to `api/test/fixtures/get_schema.json` (and removes the retired milestone 1 video relay route if an older install added it), so CloudTAK's API tests still pass.
 
-Don't install or update it through the TAK Portal marketplace.
+You can also install or update it from the TAK Portal CloudTAK Marketplace: it runs this same `install.sh`, then rebuilds CloudTAK.
 
 ## Repository layout
 
@@ -90,6 +90,17 @@ Don't install or update it through the TAK Portal marketplace.
 ## Changes
 
 The version shows at the bottom of the Cam Depot panel (`plugin/version.ts`).
+
+### v1.1.1
+
+Works with CloudTAK that has the image proxy (`/api/proxy/image`). No change to the supported versions.
+
+**Enhancements**
+- The States button reads "Pick state(s)" until a state is chosen (was "Pick states"), since one state is enough.
+
+**Maintenance**
+- README: installing or updating from the TAK Portal CloudTAK Marketplace is fine (it runs this `install.sh`); the old "don't use the marketplace" line is gone. Tested on a clean v13.128.0.
+- Added a `package.json` that carries the version, so the TAK Portal CloudTAK Marketplace shows it. It is not installed into CloudTAK; keep it equal to `plugin/version.ts`.
 
 ### v1.1.0
 - No state is picked for first-time users (was Kansas); the States button reads "Pick states" until one is chosen.
