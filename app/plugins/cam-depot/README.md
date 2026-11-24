@@ -91,6 +91,20 @@ You can also install or update it from the TAK Portal CloudTAK Marketplace: it r
 
 The version shows at the bottom of the Cam Depot panel (`plugin/version.ts`).
 
+### v1.1.2
+
+Works with CloudTAK that has the image proxy (`/api/proxy/image`). No change to the supported versions.
+
+**Maintenance**
+- The plugin folder now carries a `package.json` with the version (`plugin/package.json`, installed to `app/plugins/cam-depot/`). The TAK Portal CloudTAK Marketplace reads the version of an installed plugin from there, so it can show which version is installed. The root `package.json` stays for the latest-version check; keep both equal to `plugin/version.ts`.
+
+**Tested**
+- Clean CloudTAK v13.128.0: install copies the file, and a second install changes nothing.
+- Not run: lint, type checks (no code changed except the version number).
+
+**Upgrade notes**
+- Nothing special.
+
 ### v1.1.1
 
 Works with CloudTAK that has the image proxy (`/api/proxy/image`). No change to the supported versions.
