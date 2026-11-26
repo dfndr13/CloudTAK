@@ -115,7 +115,7 @@ services:
             - "${MEDIA_PORT_SRT:-8890}:8890"
 
     postgis:
-        image: postgis/postgis:17-3.4-alpine
+        image: postgis/postgis:17-3.7-alpine
         restart: 'always'
         ports:
             - 127.0.0.1:5433:5432
