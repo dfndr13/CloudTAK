@@ -1479,6 +1479,46 @@
         "query": true,
         "res": true
     },
+    "GET /plugin/terrain-data-downloader/states": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/terrain-data-downloader/categories": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/terrain-data-downloader/status": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /plugin/terrain-data-downloader/plan": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /plugin/terrain-data-downloader/job": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/terrain-data-downloader/job": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/terrain-data-downloader/job/:jobid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /plugin/terrain-data-downloader/job/:jobid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /plugin": {
         "body": false,
         "query": true,
