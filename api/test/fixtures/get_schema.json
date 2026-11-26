@@ -1379,6 +1379,36 @@
         "query": false,
         "res": true
     },
+    "GET /plugin/air-aware/pack/:pack/manifest": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/air-aware/pack/:pack/tile/:key": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/air-aware/pack/:pack/file/:file": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/air-aware/tfr": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/air-aware/tfr/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /plugin/air-aware/metar": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
     "GET /cam-depot/states": {
         "body": false,
         "query": false,
@@ -2209,6 +2239,16 @@
         "query": true,
         "res": true
     },
+    "GET /dispatcher/access": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/groups": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /dispatcher/address/settings": {
         "body": false,
         "query": false,
@@ -2255,6 +2295,11 @@
         "res": true
     },
     "POST /dispatcher/address/sources/:sourceid/loads/:loadid/abort": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /dispatcher/address/sources/:sourceid/loads/:loadid": {
         "body": false,
         "query": false,
         "res": true
